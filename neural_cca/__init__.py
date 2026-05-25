@@ -101,6 +101,11 @@ from .sta import (
     trial_to_trial_correlation_matrix,
     trial_to_trial_reliability,
 )
+from .synthetic import (
+    TwoUnitDemo,
+    make_two_unit_demo,
+    poisson_train,
+)
 from .tuning import (
     OsMetricsResult,
     anova_across_orientations,

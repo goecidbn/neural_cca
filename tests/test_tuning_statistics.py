@@ -264,12 +264,10 @@ class TestEvaluateOsPerClusterRng:
     """
 
     def test_integer_seed_advances_across_clusters(self):
-        from neural_cca.sorting.sorting import evaluate_os_per_cluster
         from neural_cca.sorting.containers import SortingData
+        from neural_cca.sorting.sorting import evaluate_os_per_cluster
 
-        st, tr, angles, _ = _make_tuned_spikes(
-            preferred_angle=90.0, sigma_deg=25.0
-        )
+        st, tr, angles, _ = _make_tuned_spikes(preferred_angle=90.0, sigma_deg=25.0)
         # Two synthetic clusters so the loop runs twice.
         cluster_labels = np.zeros(len(st), dtype=np.int64)
         cluster_labels[len(st) // 2 :] = 1

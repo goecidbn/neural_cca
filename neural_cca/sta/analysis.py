@@ -672,6 +672,9 @@ def _compute_lvr(isis: npt.NDArray, refractory_period: float = 0.001) -> float:
 # ---------------------------------------------------------------------------
 
 
+AcgNormalize = Literal["counts", "rate"]
+
+
 def autocorrelogram(
     spike_times: npt.NDArray,
     trials: npt.NDArray | None = None,
@@ -679,6 +682,7 @@ def autocorrelogram(
     cluster_id: int | None = None,
     bin_size: float = 0.001,
     max_lag: float = 0.05,
+    normalize: AcgNormalize = "counts",
 ) -> tuple[npt.NDArray, npt.NDArray]:
     r"""Autocorrelogram of a spike train.
 
@@ -704,13 +708,28 @@ def autocorrelogram(
         cluster_id: Cluster to analyse.
         bin_size: Bin width (seconds, default 1 ms).
         max_lag: Maximum lag (seconds, default 50 ms).
+        normalize: ``"counts"`` (default) returns raw integer pair
+            counts per bin (``dtype=int64``).  ``"rate"`` divides by
+            ``n_spikes * bin_size`` so each bin reports the average
+            partner-spike rate in Hz at that lag (``dtype=float64``),
+            which is the convention used by elephant /
+            SpikeInterface and is comparable across cells with
+            different spike counts.
 
     Returns:
-        ``(lags, counts)`` — bin centres and histogram counts. Self-pairs
-        (``i == j``) are structurally excluded by the ``j = i + 1``
-        bound, so the zero-lag bin only contains genuine coincidences
-        between *distinct* spikes that happen to fall within one bin.
+        ``(lags, counts_or_rate)`` — bin centres and either raw
+        counts (``normalize="counts"``) or coincidence rate in Hz
+        (``normalize="rate"``).  Self-pairs (``i == j``) are
+        structurally excluded by the ``j = i + 1`` bound, so the
+        zero-lag bin only contains genuine coincidences between
+        *distinct* spikes that happen to fall within one bin.
+
+    Raises:
+        ValueError: When *normalize* is not one of ``"counts"`` or
+            ``"rate"``.
     """
+    if normalize not in ("counts", "rate"):
+        raise ValueError(f"normalize must be 'counts' or 'rate', got {normalize!r}.")
     # Filter by cluster
     if cluster_labels is not None and cluster_id is not None:
         mask = cluster_labels == cluster_id
@@ -778,6 +797,22 @@ def autocorrelogram(
             _accumulate(np.sort(spike_times[trials == t]))
 
     lags = 0.5 * (edges[:-1] + edges[1:])
+
+    if normalize == "rate":
+        # ``counts`` is the number of pair contributions per bin (each
+        # within-train pair contributes once on each side, so the
+        # symmetric bin-around-zero is filled by all valid pairs).
+        # Dividing by ``n_spikes * bin_size`` gives the average
+        # partner-spike rate (Hz) at that lag, matching the convention
+        # used by elephant / SpikeInterface.  When the spike train is
+        # empty (n_spikes == 0) the rate is undefined — emit NaNs so
+        # the caller can detect it instead of silently dividing by
+        # zero (and the warning that numpy would otherwise raise).
+        n_spikes = int(np.asarray(spike_times).size)
+        if n_spikes == 0:
+            return lags, np.full_like(counts, np.nan, dtype=np.float64)
+        rate = counts.astype(np.float64) / (n_spikes * float(bin_size))
+        return lags, rate
     return lags, counts
 
 

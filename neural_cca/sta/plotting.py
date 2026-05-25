@@ -7,10 +7,15 @@ latency, and trial reliability heatmaps.
 
 from __future__ import annotations
 
+import warnings
+
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 
+from .analysis import (
+    AcgNormalize,
+)
 from .analysis import (
     autocorrelogram as _acg,
 )
@@ -200,6 +205,7 @@ def plot_autocorrelogram(
     bin_size: float = 0.001,
     max_lag: float = 0.05,
     refractory_period: float = 0.001,
+    normalize: AcgNormalize = "counts",
     ax: plt.Axes | None = None,
     color: str = "steelblue",
 ) -> plt.Axes:
@@ -208,6 +214,16 @@ def plot_autocorrelogram(
     For trial-based recordings, pass *trials* so the underlying
     :func:`autocorrelogram` accumulates pairs within each trial only;
     see that function for the rationale.
+
+    The function emits a :class:`RuntimeWarning` when
+    ``refractory_period`` is not a whole multiple of ``bin_size``.
+    In that regime the dashed refractory line lands *inside* a bar
+    rather than on a bin edge, so visually some pairs in the
+    refractory bar are violations and some aren't — the plot can no
+    longer be read as "everything left of the line is a violation".
+    Pick a ``bin_size`` that divides ``refractory_period`` to silence
+    the warning (e.g. ``bin_size=0.0005`` for ``refractory_period=
+    0.001``).
 
     Args:
         spike_times: Spike times in seconds.
@@ -218,23 +234,43 @@ def plot_autocorrelogram(
         bin_size: Bin width (seconds).
         max_lag: Maximum lag (seconds).
         refractory_period: Shown as dashed lines.
+        normalize: ``"counts"`` (default) or ``"rate"`` — forwarded to
+            :func:`autocorrelogram`.  The y-axis label is set
+            accordingly.
         ax: Existing ``Axes``.
         color: Bar colour.
 
     Returns:
         ``Axes`` with the plot.
     """
+    # Warn when the refractory dashed line will not align to a bin
+    # edge.  A tiny absolute tolerance protects against float-rounding
+    # noise (e.g. ``0.001 - 0.0005 - 0.0005`` is not exactly 0).
+    bin_ratio = refractory_period / bin_size
+    if abs(bin_ratio - round(bin_ratio)) > 1e-9:
+        warnings.warn(
+            f"refractory_period={refractory_period} is not a whole "
+            f"multiple of bin_size={bin_size} (ratio={bin_ratio:.4f}); "
+            "the dashed refractory line will fall inside a bar rather "
+            "than on a bin edge, so the plot can no longer be read as "
+            "'bars left of the line are violations'. Pick a bin_size "
+            "that divides refractory_period to silence this warning.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 3), dpi=150)
-    lags, counts = _acg(
+    lags, values = _acg(
         spike_times,
         trials=trials,
         cluster_labels=cluster_labels,
         cluster_id=cluster_id,
         bin_size=bin_size,
         max_lag=max_lag,
+        normalize=normalize,
     )
-    ax.bar(lags * 1000, counts, width=bin_size * 1000 * 0.9, color=color, edgecolor="none")
+    ax.bar(lags * 1000, values, width=bin_size * 1000 * 0.9, color=color, edgecolor="none")
     ax.axvline(-refractory_period * 1000, color="red", linestyle="--", linewidth=0.8, alpha=0.7)
     ax.axvline(
         refractory_period * 1000,
@@ -245,7 +281,7 @@ def plot_autocorrelogram(
         label=f"refr. {refractory_period * 1e3:.1f} ms",
     )
     ax.set_xlabel("Lag (ms)")
-    ax.set_ylabel("Count")
+    ax.set_ylabel("Rate (Hz)" if normalize == "rate" else "Count")
     ax.set_title("Autocorrelogram")
     ax.legend(fontsize=8)
     return ax

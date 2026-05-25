@@ -327,6 +327,78 @@ class TestAutocorrelogram:
         mid = len(counts) // 2
         assert counts[mid] == 0, "Zero-lag bin should be 0"
 
+    def test_rate_normalisation(self):
+        """``normalize='rate'`` reports counts divided by n_spikes·bin_size."""
+        rng = np.random.default_rng(7)
+        st = np.sort(rng.uniform(0.0, 1.0, 50))
+        bin_size = 0.001
+        max_lag = 0.02
+        _, counts = autocorrelogram(st, bin_size=bin_size, max_lag=max_lag, normalize="counts")
+        _, rate = autocorrelogram(st, bin_size=bin_size, max_lag=max_lag, normalize="rate")
+        # rate == counts / (n_spikes * bin_size) bin-for-bin
+        expected = counts.astype(float) / (len(st) * bin_size)
+        np.testing.assert_allclose(rate, expected, rtol=1e-12)
+        assert rate.dtype == np.float64
+        assert counts.dtype == np.int64
+
+    def test_invalid_normalize_raises(self):
+        with pytest.raises(ValueError, match="counts.*rate"):
+            autocorrelogram(np.array([0.0, 0.001]), normalize="probability")  # type: ignore[arg-type]
+
+    def test_empty_spike_train_rate_is_nan(self):
+        """Empty input + ``normalize='rate'`` returns NaN, not a div-by-zero."""
+        lags, rate = autocorrelogram(
+            np.empty(0),
+            bin_size=0.001,
+            max_lag=0.01,
+            normalize="rate",
+        )
+        assert rate.dtype == np.float64
+        assert np.all(np.isnan(rate))
+        assert lags.shape == rate.shape
+
+    def test_plot_warns_on_misaligned_refractory(self):
+        """plot_autocorrelogram warns when refr is not a multiple of bin_size.
+
+        In that regime the dashed refractory line falls *inside* a
+        bar rather than on a bin edge, so the visual "everything left
+        of the line is a violation" reading breaks down.  The polish
+        emits a RuntimeWarning so the user sees it instead of
+        silently misreading the plot.
+        """
+        import matplotlib
+
+        matplotlib.use("Agg")  # headless backend, no display required
+        from neural_cca.sta.plotting import plot_autocorrelogram
+
+        st = np.sort(np.random.default_rng(0).uniform(0.0, 1.0, 30))
+        with pytest.warns(RuntimeWarning, match="whole multiple of bin_size"):
+            plot_autocorrelogram(
+                st,
+                bin_size=0.001,
+                max_lag=0.02,
+                refractory_period=0.0015,  # 1.5 × bin_size
+            )
+
+    def test_plot_no_warning_when_aligned(self):
+        """Aligned refractory (multiple of bin_size) → no warning."""
+        import warnings as _warn
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from neural_cca.sta.plotting import plot_autocorrelogram
+
+        st = np.sort(np.random.default_rng(0).uniform(0.0, 1.0, 30))
+        with _warn.catch_warnings():
+            _warn.simplefilter("error", RuntimeWarning)
+            plot_autocorrelogram(
+                st,
+                bin_size=0.001,
+                max_lag=0.02,
+                refractory_period=0.002,  # 2 × bin_size, exact
+            )
+
     def test_vectorised_matches_naive(self):
         """Regression test for the vectorised pair accumulation.
 

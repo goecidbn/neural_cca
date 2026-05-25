@@ -430,66 +430,15 @@ def bursting_spikes():
 # ==================================================================
 
 
-def make_tuned_spikes(
-    preferred_angle: float = 90.0,
-    n_angles: int = 12,
-    n_repeats: int = 20,
-    base_rate: float = 2.0,
-    peak_rate: float = 30.0,
-    sigma_deg: float = 30.0,
-    trial_duration: float = 2.5,
-    stimulus_onset: float = 0.5,
-    rng: np.random.Generator | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Generate synthetic spike times from a Gaussian-tuned neuron.
-
-    This is the **single source of truth** — it was previously
-    copy-pasted into ``test_tuning.py``, ``test_tuning_extended.py``,
-    and ``test_tuning_statistics.py``.
-
-    Args:
-        preferred_angle: Peak of the tuning curve (degrees).
-        n_angles: Number of stimulus directions (evenly spaced on 360°).
-        n_repeats: Repetitions per angle.
-        base_rate: Spontaneous firing rate (Hz).
-        peak_rate: Maximum evoked firing rate (Hz).
-        sigma_deg: Tuning width (degrees).
-        trial_duration: Trial length (seconds).
-        stimulus_onset: Stimulus onset within trial (seconds).
-        rng: Random number generator (default: seeded at 42 for
-             backwards compatibility with the three original copies).
-
-    Returns:
-        ``(spike_times, trials, angles, unique_angles)``
-    """
-    if rng is None:
-        rng = _test_rng(42)
-
-    angles_deg = np.linspace(0, 360, n_angles, endpoint=False)
-    angles = np.repeat(angles_deg, n_repeats)
-    n_trials = len(angles)
-    stim_duration = trial_duration - stimulus_onset
-
-    all_st: list[npt.NDArray] = []
-    all_tr: list[npt.NDArray] = []
-    for t_idx in range(n_trials):
-        ang = angles[t_idx]
-        # Circular distance
-        d = min(abs(ang - preferred_angle), 360 - abs(ang - preferred_angle))
-        rate = base_rate + (peak_rate - base_rate) * np.exp(-(d**2) / (2 * sigma_deg**2))
-        # Spontaneous spikes
-        n_spont = rng.poisson(base_rate * stimulus_onset)
-        spont_times = rng.uniform(0, stimulus_onset, n_spont)
-        # Evoked spikes
-        n_evoked = rng.poisson(rate * stim_duration)
-        evoked_times = rng.uniform(stimulus_onset, trial_duration, n_evoked)
-        st = np.sort(np.concatenate([spont_times, evoked_times]))
-        all_st.append(st)
-        all_tr.append(np.full(len(st), t_idx, dtype=np.int64))
-
-    spike_times = np.concatenate(all_st)
-    trials = np.concatenate(all_tr)
-    return spike_times, trials, angles, angles_deg
+# Re-export the canonical implementation from ``neural_cca.synthetic``.
+# Keeping a thin shim here (rather than removing the conftest entry
+# entirely) preserves the long-standing ``from tests.conftest import
+# make_tuned_spikes`` import path used across the test suite.  The
+# function is identical to the one previously inlined here — same
+# RNG construction (``PCG64DXSM`` via ``SeedSequence``), same default
+# seed (42), same per-trial Poisson recipe — so seeded fixtures keep
+# producing bit-identical streams.
+from neural_cca.synthetic import make_tuned_spikes  # noqa: E402
 
 
 @pytest.fixture

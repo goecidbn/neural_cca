@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `neural_cca/synthetic.py`: new public module that owns all
+  synthetic spike-train and waveform generation used by the four
+  example notebooks and the test fixtures. Public helpers:
+  `poisson_train` (binwise inhomogeneous Poisson with absolute
+  refractory), `make_tuned_spikes` (single Gaussian-tuned cluster —
+  the function `tests/conftest.py` used to inline), and
+  `make_two_unit_demo` returning a `TwoUnitDemo` NamedTuple that
+  bundles every array the canonical two-unit demo needs (spike
+  times, trials, angles, waveforms, ground truth, and a loaded
+  `SortingData`). All four example notebooks collapse from ~115
+  lines of inline Poisson + Gaussian-template setup down to ~25
+  lines of unpacking. `tests/conftest.py::make_tuned_spikes` now
+  re-exports from this module so the test stream stays
+  bit-identical (same `PCG64DXSM` + `SeedSequence(42)` construction).
+- `docs/api/synthetic.rst`: dedicated API page for the new module.
+- `sta/analysis.py`: `autocorrelogram` accepts `normalize="counts"`
+  (default, unchanged) or `normalize="rate"` (divides by
+  `n_spikes * bin_size`, returning Hz — matches the
+  elephant / SpikeInterface convention). Empty spike trains return
+  NaN-filled arrays under `rate` normalisation instead of dividing
+  by zero.
+- `sta/plotting.py`: `plot_autocorrelogram` forwards `normalize=`
+  and labels the y-axis accordingly. Emits a `RuntimeWarning` when
+  `refractory_period` is not a whole multiple of `bin_size` —
+  in that regime the dashed refractory line lands inside a bar
+  rather than on a bin edge and the plot can no longer be read as
+  "everything left of the line is a violation".
+- `tests/test_spike_train.py`: regression tests
+  `test_rate_normalisation`, `test_invalid_normalize_raises`,
+  `test_empty_spike_train_rate_is_nan`,
+  `test_plot_warns_on_misaligned_refractory`,
+  `test_plot_no_warning_when_aligned`.
+
+### Changed
+
+- `tests/test_tuning_statistics.py`: alphabetised the in-function
+  imports in `TestEvaluateOsPerClusterRng::test_integer_seed_advances_across_clusters`
+  to satisfy `ruff check` (I001).
+
 ### Fixed
 
 - `sorting/sorting.py`: `run_sorting_pipeline` now forwards `rng` to

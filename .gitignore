@@ -140,3 +140,6 @@ uv.lock
 
 .claude
 warnings_sphinx_build.txt
+
+# ghfailed output — runs and step logs for failed CI on a given commit
+20[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_*_failed.txt

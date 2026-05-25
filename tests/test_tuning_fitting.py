@@ -155,9 +155,7 @@ class TestTuningCurveInterpolation:
         """
         oris = np.linspace(0, 165, 12)  # 0, 15, …, 165 — does not span 175
         resp = _von_mises_response(oris, kappa=3.0, theta0_deg=175.0)
-        pref = tuning_curve_interpolation(
-            resp, oris, model="von_mises_orientation"
-        )
+        pref = tuning_curve_interpolation(resp, oris, model="von_mises_orientation")
         # The fitted ``preferred_angle`` is mod 180, so 175° folds to
         # the same orientation as ~−5°.
         circ_err = min(abs(pref - 175.0), abs(pref - 175.0 + 180.0), abs(pref + 5.0))
@@ -174,9 +172,7 @@ class TestTuningCurveInterpolation:
             + 4.0 * np.exp(3.0 * np.cos(theta - (theta0 + np.pi)))
             + 1.0
         )
-        pref = tuning_curve_interpolation(
-            resp, oris, model="von_mises_direction"
-        )
+        pref = tuning_curve_interpolation(resp, oris, model="von_mises_direction")
         # Allow circular error up to 30° (one sampling step), checking
         # both directly and via wraparound.
         circ_err = min(abs(pref - 350.0), abs(pref - 350.0 + 360.0), abs(pref + 10.0))

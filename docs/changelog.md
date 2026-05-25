@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `neural_cca/__init__.py`: `tomllib` is stdlib only on Python 3.11+;
+  on 3.10 the pyproject-read fallback raised `ModuleNotFoundError` and
+  silently reported `__version__ = "0.0.0"` for editable installs.
+  Added a `tomli` backport import and a `tomli` runtime dependency
+  guarded by `python_version < '3.11'`.
 - `examples/example_sorting_pipeline.ipynb`: removed orphaned bernoulli-train
   code after `poisson_train`'s return — left over from a copy-paste, was a
   hard `SyntaxError` when the cell was parsed.
@@ -20,6 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   estimator suggestion instead.
 - `tests/test_tuning.py`: removed dead assignment to `angles` in
   `TestCalcMfrTrial::test_known_rate`.
+
+### Removed
+
+- `neural_cca/sorting/zarr_export.py`: 5-line backwards-compat shim that
+  only re-exported `to_zarr_flat`, `to_zarr_clustered`,
+  `read_zarr_sorting` from `io_util.py`. The filename suggested it
+  owned the code; it didn't. No external importers found. Import the
+  three functions from `neural_cca.sorting.io_util` (or from the
+  top-level `neural_cca`) instead.
+- `neural_cca/tuning/trial_rates.py`: empty deprecation stub. The
+  `calc_mfr_trial` function moved to `neural_cca.sta.analysis` long
+  ago; no external importers found.
 
 ### Documentation
 

@@ -20,7 +20,10 @@ except PackageNotFoundError:
     # Fallback for editable installs / development without pip install:
     # read the version from pyproject.toml so it stays in sync.
     try:
-        import tomllib as _tomllib
+        try:
+            import tomllib as _tomllib  # Python 3.11+
+        except ModuleNotFoundError:
+            import tomli as _tomllib  # Python 3.10 backport
         from pathlib import Path as _Path
 
         _pyproject = _Path(__file__).resolve().parent.parent / "pyproject.toml"

@@ -25,6 +25,10 @@ dependencies = [
     "scipy>=1.9",
     "scikit-learn>=1.1",
     "matplotlib>=3.6",
+    # tomllib is stdlib in 3.11+; fall back to the tomli backport on 3.10.
+    # Used by neural_cca/__init__.py to read the version from pyproject
+    # for editable installs that don't go through the metadata API.
+    "tomli>=1.1; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]

@@ -370,17 +370,16 @@ class TestCalcWeightedSNR:
 
 
 class TestRpvsValidation:
-    def test_negative_refractory_raises(self):
-        """Negative ``refractory_period`` silently inverts the
-        comparison; the function must refuse instead of returning 0."""
+    @pytest.mark.parametrize("bad_refractory", [-0.001, 0.0])
+    def test_non_positive_refractory_raises(self, bad_refractory):
+        """Zero and negative ``refractory_period`` both trip the same
+        guard (``<= 0``).  A negative value silently inverts the
+        ``isi < refractory`` comparison and reports zero violations
+        for every spike train; the function must refuse rather than
+        lie."""
         st = np.array([0.0, 0.0005, 0.0015, 0.003])
         with pytest.raises(ValueError, match="refractory_period must be positive"):
-            rpvs(st, refractory_period=-0.001)
-
-    def test_zero_refractory_raises(self):
-        st = np.array([0.0, 0.0005, 0.0015])
-        with pytest.raises(ValueError, match="refractory_period must be positive"):
-            rpvs(st, refractory_period=0.0)
+            rpvs(st, refractory_period=bad_refractory)
 
     def test_positive_refractory_works(self):
         """Sanity: the validation doesn't break the happy path."""

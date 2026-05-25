@@ -689,13 +689,20 @@ class TestSortingDataValidation:
             angles=np.array([0.0], dtype=np.float64),
         )
 
-    def test_zero_duration_stim_window_raises(self):
+    @pytest.mark.parametrize(
+        "bad_stim_window",
+        [
+            (2.5, 2.5),  # zero duration
+            (3.0, 0.5),  # inverted
+        ],
+    )
+    def test_invalid_stim_window_raises(self, bad_stim_window):
+        """Zero-duration and onset > end both trip the same
+        ``s_end <= s_on`` guard.  Pre-fix, the missing check let a
+        typo silently divide by zero in ``batch.py``'s firing-rate
+        calculation and yielded NaN rates with no breadcrumb."""
         with pytest.raises(ValueError, match="onset < end"):
-            SortingData(**self._minimal_arrays(), stim_window=(2.5, 2.5))
-
-    def test_inverted_stim_window_raises(self):
-        with pytest.raises(ValueError, match="onset < end"):
-            SortingData(**self._minimal_arrays(), stim_window=(3.0, 0.5))
+            SortingData(**self._minimal_arrays(), stim_window=bad_stim_window)
 
     def test_valid_stim_window_accepted(self):
         """Sanity: the validation doesn't break the happy path."""

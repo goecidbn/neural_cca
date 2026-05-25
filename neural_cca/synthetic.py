@@ -137,11 +137,15 @@ def make_tuned_spikes(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Synthetic spike times from a Gaussian-tuned neuron.
 
-    This is the test-friendly variant (``rng.poisson`` + ``rng.uniform``
-    per trial) — the binwise refractory-enforcing path lives in
-    :func:`make_two_unit_demo` via :func:`poisson_train`.  Keeping
-    them separate means seeded test fixtures stay stable when the
-    notebook helpers evolve.
+    Unlike :func:`make_two_unit_demo` (which uses :func:`poisson_train`
+    with a bin-wise loop and an *absolute* refractory period), this
+    function draws independent ``rng.poisson`` counts per trial and
+    ``rng.uniform`` placements.  It therefore does **not** enforce a
+    refractory period — by design, so that seeded test fixtures produce
+    deterministic spike counts that are stable across refactors of the
+    refractory logic in ``poisson_train``.  Use it for ground-truth
+    tuning tests and conftest fixtures; use :func:`make_two_unit_demo`
+    for sortable, refractory-respecting demo data.
 
     Args:
         preferred_angle: Peak of the Gaussian tuning curve (degrees).

@@ -7,12 +7,14 @@ import pytest
 
 from neural_cca.sorting.metrics import (
     amplitude_drift,
+    calc_weighted_snr,
     d_prime,
     d_prime_pairwise_matrix,
     fraction_missing,
     isolation_distance,
     l_ratio,
     peak_amplitude_snr,
+    rpvs,
     waveform_stability,
 )
 
@@ -316,3 +318,73 @@ class TestFractionMissing:
         result = fraction_missing(wv, lab)
         for v in result.values():
             assert 0 <= v <= 1 or np.isnan(v)
+
+
+# ---------------------------------------------------------------------------
+# calc_weighted_snr — NaN-cluster handling (regression for the
+# "one degenerate cluster poisons the whole metric" bug)
+# ---------------------------------------------------------------------------
+
+
+class TestCalcWeightedSNR:
+    def test_clean_multi_cluster_returns_finite(self):
+        """All clusters well-formed → numeric weighted SNR."""
+        wv, lab, _, _ = _make_waveforms(n=200)
+        result = calc_weighted_snr(wv, lab)
+        assert np.isfinite(result)
+        assert result > 0
+
+    def test_one_degenerate_cluster_warns_and_renormalises(self):
+        """Mixing a healthy cluster with one that has identical
+        waveforms emits a ``RuntimeWarning`` but returns the healthy
+        cluster's SNR — *not* NaN."""
+        wv, lab, _, _ = _make_waveforms(n=200)
+        # Append a degenerate cluster: 50 *identical* snippets (zero
+        # noise variance → est_snr returns NaN for this cluster alone).
+        dup = np.tile(wv[0], (50, 1))
+        wv_aug = np.vstack([wv, dup])
+        lab_aug = np.concatenate([lab, np.full(50, 2, dtype=lab.dtype)])
+
+        clean = calc_weighted_snr(wv, lab)
+        with pytest.warns(RuntimeWarning, match="degenerate noise"):
+            result = calc_weighted_snr(wv_aug, lab_aug)
+        # The degenerate cluster is excluded; remaining weights are
+        # renormalised back to the original two clusters, so the
+        # numeric answer matches the clean run within float tolerance.
+        assert np.isfinite(result)
+        assert result == pytest.approx(clean, rel=1e-12)
+
+    def test_all_degenerate_returns_nan(self):
+        """If every cluster is degenerate the metric is undefined."""
+        wv = np.tile(np.linspace(-1, 1, 20), (10, 1))
+        lab = np.array([0] * 5 + [1] * 5, dtype=np.int64)
+        # Make cluster 1 a different (but still identical) template.
+        wv[5:] = np.linspace(2, 3, 20)
+        with pytest.warns(RuntimeWarning, match="degenerate noise"):
+            assert np.isnan(calc_weighted_snr(wv, lab))
+
+
+# ---------------------------------------------------------------------------
+# rpvs — input validation (regression for silent sign-inversion bug)
+# ---------------------------------------------------------------------------
+
+
+class TestRpvsValidation:
+    def test_negative_refractory_raises(self):
+        """Negative ``refractory_period`` silently inverts the
+        comparison; the function must refuse instead of returning 0."""
+        st = np.array([0.0, 0.0005, 0.0015, 0.003])
+        with pytest.raises(ValueError, match="refractory_period must be positive"):
+            rpvs(st, refractory_period=-0.001)
+
+    def test_zero_refractory_raises(self):
+        st = np.array([0.0, 0.0005, 0.0015])
+        with pytest.raises(ValueError, match="refractory_period must be positive"):
+            rpvs(st, refractory_period=0.0)
+
+    def test_positive_refractory_works(self):
+        """Sanity: the validation doesn't break the happy path."""
+        st = np.array([0.0, 0.0005, 0.001, 0.0025])
+        result = rpvs(st, refractory_period=0.001, relative=False)
+        assert isinstance(result, int)
+        assert result >= 0

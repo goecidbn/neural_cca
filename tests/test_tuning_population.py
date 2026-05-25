@@ -105,6 +105,29 @@ class TestSignalCorrelations:
         corr = signal_correlations(tc)
         np.testing.assert_array_almost_equal(corr, corr.T)
 
+    def test_flat_tuning_returns_nan(self):
+        """A neuron with zero-variance tuning has an undefined Pearson
+        r; the function returns ``np.nan`` for those entries (matching
+        the package-wide undefined-vs-zero convention) rather than the
+        previous silent ``0.0`` that conflated "undefined" with
+        "uncorrelated"."""
+        tc = np.array(
+            [
+                [5.0, 5.0, 5.0, 5.0],  # flat — no signal
+                [1.0, 4.0, 8.0, 2.0],  # tuned
+                [2.0, 7.0, 1.0, 6.0],  # tuned
+            ]
+        )
+        corr = signal_correlations(tc)
+        # Diagonal is still 1 by construction (np.eye initialiser).
+        np.testing.assert_array_almost_equal(np.diag(corr), [1.0, 1.0, 1.0])
+        # Off-diagonal entries involving the flat neuron are NaN.
+        assert np.isnan(corr[0, 1])
+        assert np.isnan(corr[1, 0])
+        assert np.isnan(corr[0, 2])
+        # Between the two tuned neurons the correlation is finite.
+        assert np.isfinite(corr[1, 2])
+
 
 # ======================================================================
 # Tests: noise_correlations
@@ -143,3 +166,25 @@ class TestNoiseCorrelations:
         angles = np.tile(np.arange(8) * 45.0, 60 // 8 + 1)[:60]
         corr = noise_correlations(trial_rates, angles)
         np.testing.assert_array_almost_equal(corr, corr.T)
+
+    def test_zero_residual_neuron_returns_nan(self):
+        """A neuron whose response is identical on every repeat of
+        every orientation has zero residual variance — the resulting
+        noise correlation is undefined and must be ``np.nan``, not the
+        previous silent ``0.0``."""
+        n_trials = 24
+        angles = np.tile(np.arange(8) * 45.0, n_trials // 8)
+        # Neuron 0: identical 10 Hz on every trial (residuals all 0).
+        # Neuron 1: noisy.
+        rng = np.random.default_rng(0)
+        trial_rates = np.vstack(
+            [
+                np.full(n_trials, 10.0),
+                10.0 + rng.standard_normal(n_trials),
+            ]
+        )
+        corr = noise_correlations(trial_rates, angles)
+        assert np.isnan(corr[0, 1])
+        assert np.isnan(corr[1, 0])
+        # Diagonal is 1 by construction.
+        np.testing.assert_array_almost_equal(np.diag(corr), [1.0, 1.0])

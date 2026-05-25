@@ -93,6 +93,10 @@ def signal_correlations(
 
     Returns:
         Symmetric ``(n_neurons, n_neurons)`` Pearson correlation matrix.
+        Off-diagonal entries are ``np.nan`` whenever either neuron has a
+        zero-variance (flat) tuning curve — Pearson's r is undefined in
+        that case, matching the package-wide convention that ``np.nan``
+        signals "undefined" rather than "uncorrelated".
     """
     tuning_curves = np.asarray(tuning_curves, dtype=np.float64)
     n = tuning_curves.shape[0]
@@ -101,7 +105,7 @@ def signal_correlations(
     for i in range(n):
         for j in range(i + 1, n):
             if np.std(tuning_curves[i]) == 0 or np.std(tuning_curves[j]) == 0:
-                r = 0.0
+                r = np.nan
             else:
                 r, _ = pearsonr(tuning_curves[i], tuning_curves[j])
             corr[i, j] = r
@@ -148,12 +152,15 @@ def noise_correlations(
             else:
                 residuals[i, mask] = 0.0
 
-    # Pairwise correlations of residuals
+    # Pairwise correlations of residuals.  Off-diagonal NaN signals
+    # "undefined" (e.g. a neuron with identical trial responses at every
+    # orientation produces zero-variance residuals) — consistent with
+    # the package-wide undefined-vs-zero convention.
     corr = np.eye(n_neurons)
     for i in range(n_neurons):
         for j in range(i + 1, n_neurons):
             if np.std(residuals[i]) == 0 or np.std(residuals[j]) == 0:
-                r = 0.0
+                r = np.nan
             else:
                 r, _ = pearsonr(residuals[i], residuals[j])
             corr[i, j] = r

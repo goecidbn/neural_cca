@@ -137,10 +137,15 @@ def est_snr(waveforms: npt.NDArray) -> float:
         identical traces).
     """
     W_bar = np.mean(waveforms, axis=0, dtype=np.float64)
-    sig_amp = np.max(W_bar) - np.min(W_bar)
+    sig_amp = float(np.max(W_bar) - np.min(W_bar))
     noise = waveforms - W_bar
     noise_std = float(np.std(noise))
-    if noise_std == 0:
+    # Identical rows produce a residual ``noise_std`` of ~1e-15 (the
+    # mean-subtraction rounding floor at float64), which slips past an
+    # exact ``== 0`` guard and returns a bogus 1e15-scale SNR.  Compare
+    # against the signal magnitude so the threshold tracks the data
+    # scale instead of being a fixed absolute number.
+    if noise_std <= 1e-12 * max(sig_amp, 1.0):
         return np.nan
     return float(sig_amp / (2.0 * noise_std))
 
@@ -154,6 +159,14 @@ def calc_weighted_snr(
     For each cluster, computes ``est_snr`` and weights it by the
     proportion of snippets belonging to that cluster.
 
+    Clusters whose ``est_snr`` returns ``np.nan`` (degenerate noise:
+    identical waveforms, or a single-snippet cluster) are **excluded**
+    from the weighted mean and the remaining weights are renormalised.
+    A ``RuntimeWarning`` is emitted whenever this happens so callers
+    can spot the culprit cluster instead of seeing the entire recording
+    silently reported as ``NaN``.  When **every** cluster is degenerate
+    the function returns ``np.nan``.
+
     Args:
         waveforms: Waveform matrix, shape ``(n_snippets, snippet_length)``.
         cluster_labels: Cluster label per snippet.
@@ -164,12 +177,29 @@ def calc_weighted_snr(
     unique, counts = np.unique(cluster_labels, return_counts=True)
     weights = counts / np.sum(counts)
 
-    weighted_snr = 0.0
-    for cid, weight in zip(unique, weights):
-        snr = est_snr(waveforms[cluster_labels == cid])
-        weighted_snr += snr * weight
-
-    return float(weighted_snr)
+    snrs = np.array(
+        [est_snr(waveforms[cluster_labels == cid]) for cid in unique],
+        dtype=np.float64,
+    )
+    valid = ~np.isnan(snrs)
+    # Always warn first when any cluster is degenerate — the user
+    # should hear about it whether we can still return a partial
+    # weighted mean (some clusters valid) or have to surrender (none
+    # valid).  Burying this behind the early-return would silently
+    # hide the very condition the function is meant to surface.
+    if not valid.all():
+        bad = [int(c) for c, ok in zip(unique, valid) if not ok]
+        warnings.warn(
+            f"calc_weighted_snr: cluster(s) {bad} had degenerate noise "
+            "(identical waveforms or a single snippet); excluded from the "
+            "weighted mean.  Remaining weights renormalised.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    if not valid.any():
+        return float("nan")
+    w = weights[valid] / weights[valid].sum()
+    return float(np.dot(snrs[valid], w))
 
 
 def rpvs(
@@ -230,6 +260,12 @@ def rpvs(
     _validate_cluster_args(all_clusters, cluster_id)
     if not all_clusters and cluster_labels is None:
         raise ValueError("cluster_labels must be provided when all_clusters is False.")
+    if refractory_period <= 0:
+        raise ValueError(
+            f"refractory_period must be positive (got {refractory_period}); "
+            "a non-positive value silently inverts the violation comparison "
+            "and reports zero RPVs regardless of the data."
+        )
 
     # The denominator is the *spike count*, not the valid-ISI count.
     # Dividing by ``len(diffs)`` would inflate the value for trial-based
@@ -569,7 +605,10 @@ def d_prime_pairwise_matrix(
             if np.isnan(var_a) or np.isnan(var_b):
                 continue
             pooled_std = np.sqrt(0.5 * (var_a + var_b))
-            if pooled_std == 0:
+            # Use an absolute floor rather than exact equality so float
+            # rounding from `np.sqrt(tiny + tiny)` doesn't slip through
+            # and produce a division-by-near-zero blow-up below.
+            if pooled_std < 1e-12:
                 continue
             mat[i, j] = float(np.linalg.norm(mu_a - mu_b) / pooled_std)
     return mat, unique

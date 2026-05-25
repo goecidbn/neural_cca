@@ -102,7 +102,16 @@ class SortingData:
         # Normalise to a tuple of two floats — accept lists / arrays as
         # well so deserialised JSON / Zarr attrs round-trip cleanly.
         s_on, s_end = self.stim_window
-        self.stim_window = (float(s_on), float(s_end))
+        s_on, s_end = float(s_on), float(s_end)
+        # A non-positive stimulus duration would silently divide by zero
+        # downstream (firing-rate calc in ``batch.py``) and yield NaN
+        # rates with no breadcrumb — catch the typo at construction time.
+        if s_end <= s_on:
+            raise ValueError(
+                f"stim_window must satisfy onset < end (got {(s_on, s_end)}); "
+                "a zero or negative duration produces NaN firing rates."
+            )
+        self.stim_window = (s_on, s_end)
 
     @property
     def n_spikes(self) -> int:

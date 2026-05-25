@@ -539,7 +539,8 @@ class TestSingleCluster:
 
     def test_k1_with_os_metrics(self):
         """OS metrics still compute at k=1 — the per-cluster loop
-        yields exactly one entry, keyed by the single label 0."""
+        yields exactly one entry, keyed by the single label 0,
+        with all returned values in their documented ranges."""
         data = make_sorting_data()
         with pytest.warns(RuntimeWarning, match="k=1"):
             r = run_sorting_pipeline(
@@ -551,12 +552,22 @@ class TestSingleCluster:
             )
         assert r.os_metrics is not None
         assert list(r.os_metrics.keys()) == [0]
+        m = r.os_metrics[0]
         # The standard set of OS keys is present.
         for key in ("osi", "dsi", "preferred_orientation"):
-            assert key in r.os_metrics[0]
+            assert key in m
+        # OSI / DSI live in [0, 1] when finite; preferred angle on
+        # the orientation circle [0, 180).  Either of these can be
+        # NaN for a silent / untuned unit, but never out of range.
+        for key in ("osi", "dsi"):
+            v = m[key]
+            assert np.isnan(v) or 0.0 <= v <= 1.0, f"{key}={v} out of [0, 1]"
+        pref = m["preferred_orientation"]
+        assert np.isnan(pref) or 0.0 <= pref < 180.0, f"preferred={pref} out of [0, 180)"
 
     def test_k1_zarr_roundtrip(self, tmp_path):
-        """Single-cluster sorting round-trips through both zarr layouts."""
+        """Single-cluster sorting round-trips through both zarr layouts
+        with bit-identical labels, spike times, waveforms, and angles."""
         from neural_cca.sorting.io_util import (
             read_zarr_sorting,
             to_zarr_clustered,
@@ -580,10 +591,17 @@ class TestSingleCluster:
             r2, d2 = read_zarr_sorting(store)
             assert r2.n_clusters == 1
             np.testing.assert_array_equal(r.cluster_labels, r2.cluster_labels)
-            # Quality NaNs survive round-trip cleanly.
-            assert (
-                np.isnan(r2.quality["silhouette_mean"]) or r2.quality["silhouette_mean"] is None
-            )  # JSON-NaN normalises to None in the attrs path
+            # Raw input data also survives the round-trip.
+            np.testing.assert_allclose(d2.waveforms, data.waveforms)
+            np.testing.assert_allclose(d2.spike_times, data.spike_times)
+            np.testing.assert_array_equal(d2.trials, data.trials)
+            np.testing.assert_allclose(d2.angles, data.angles)
+            # Quality NaNs survive round-trip cleanly.  JSON-NaN
+            # normalises to ``None`` in the attrs path on modern zarr,
+            # so the ``is None`` check must come first to short-circuit
+            # before ``np.isnan`` (which would TypeError on ``None``).
+            sil = r2.quality["silhouette_mean"]
+            assert sil is None or np.isnan(sil)
             # min_silhouette metadata round-trips
             assert "min_silhouette" in r2.metadata
             assert "min_silhouette_triggered" in r2.metadata
@@ -653,3 +671,34 @@ class TestSingleCluster:
         )
         assert result.n_clusters == 2
         assert result.metadata["min_silhouette_triggered"] is False
+
+
+# ======================================================================
+# SortingData construction-time validation (regression: stim_window
+# with zero/negative duration used to silently divide-by-zero in
+# downstream firing-rate calculations).
+# ======================================================================
+
+
+class TestSortingDataValidation:
+    def _minimal_arrays(self):
+        return dict(
+            waveforms=np.zeros((5, 8), dtype=np.float64),
+            spike_times=np.zeros(5, dtype=np.float64),
+            trials=np.zeros(5, dtype=np.int64),
+            angles=np.array([0.0], dtype=np.float64),
+        )
+
+    def test_zero_duration_stim_window_raises(self):
+        with pytest.raises(ValueError, match="onset < end"):
+            SortingData(**self._minimal_arrays(), stim_window=(2.5, 2.5))
+
+    def test_inverted_stim_window_raises(self):
+        with pytest.raises(ValueError, match="onset < end"):
+            SortingData(**self._minimal_arrays(), stim_window=(3.0, 0.5))
+
+    def test_valid_stim_window_accepted(self):
+        """Sanity: the validation doesn't break the happy path."""
+        data = SortingData(**self._minimal_arrays(), stim_window=(0.5, 2.5))
+        assert data.stim_window == (0.5, 2.5)
+        assert data.stimulus_duration == 2.0

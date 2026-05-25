@@ -87,6 +87,14 @@ quote-style = "double"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers -v"
+# Silence external-library deprecation warnings that would otherwise
+# bury our own test signal.  Matplotlib's font-config parser raises
+# ~12 ``PyparsingDeprecationWarning``s the first time a plot is built;
+# they are not actionable from this package.
+filterwarnings = [
+    "ignore::DeprecationWarning:matplotlib",
+    "ignore::DeprecationWarning:pyparsing",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["neural_cca"]

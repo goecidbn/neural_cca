@@ -77,6 +77,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TestTrialIndexValidation`, and `TestDosiIntShorthand` pin the
   rng-share, trial-ID validation, and `dosi` int-shorthand
   contracts.
+- `tests/test_synthetic.py`: new file giving the `neural_cca.synthetic`
+  module its own coverage — `TestPoissonTrain` (refractory contract,
+  zero/array rate profiles, seeded reproducibility), `TestMakeTunedSpikes`
+  (default-seed stream, shapes/dtypes, peak-near-preferred), and
+  `TestMakeTwoUnitDemo` (NamedTuple field set, array-shape coherence,
+  merged-spike chronological ordering, ground-truth alignment, C1
+  orientation-indifference CV < 0.20, C2 selectivity gOSI > 0.5,
+  seed → identical arrays).  `TestBatchSortExperiment` covers the
+  public re-export contract and the bogus-path
+  `FileNotFoundError` (the function previously had zero direct tests).
+- `tests/test_sorting_metrics.py`: `TestCalcWeightedSNR`
+  (clean-multi-cluster numeric path, one-degenerate-cluster
+  renormalisation warning, all-degenerate → NaN) and
+  `TestRpvsValidation` (negative / zero `refractory_period` rejected)
+  pin the new robustness contracts.
+- `tests/test_sorting_preprocess.py::TestSortingDataValidation`:
+  zero-duration / inverted / valid `stim_window` cases for the new
+  construction-time check.
+- `tests/test_tuning_population.py`:
+  `TestSignalCorrelations::test_flat_tuning_returns_nan` and
+  `TestNoiseCorrelations::test_zero_residual_neuron_returns_nan`
+  pin the new "undefined-vs-zero" convention for correlation
+  matrices.
 
 ### Changed
 
@@ -107,6 +130,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   imports in
   `TestEvaluateOsPerClusterRng::test_integer_seed_advances_across_clusters`
   to satisfy `ruff check` (I001).
+- `sorting/containers.py`: `SortingData.__post_init__` now rejects a
+  `stim_window` with onset ≥ end at construction time.  A zero or
+  negative stimulus duration used to silently divide by zero deep
+  in `batch.py`'s per-trial firing-rate calculation, leaving the
+  user with NaN rates and no breadcrumb pointing at the typo.
+- `sorting/metrics.py`: `rpvs` now refuses non-positive
+  `refractory_period`.  A negative value silently inverted the
+  ``isi < refractory`` comparison and reported zero violations for
+  every spike train — the new `ValueError` surfaces the input bug
+  at the call site.
+- `tuning/population.py`: `signal_correlations` and
+  `noise_correlations` now return `np.nan` (not `0.0`) for the
+  off-diagonal entries whenever either neuron has a zero-variance
+  tuning curve or zero-variance residual.  Pearson's *r* is
+  undefined in that case; the previous `0.0` conflated "undefined"
+  with "uncorrelated" and disagreed with the package-wide
+  undefined-vs-zero convention already used by `gosi`, `osi`, etc.
 
 ### Fixed
 
@@ -160,6 +200,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of `len(unique(trials))` when `n_trials is None`, so
   sparse trial IDs (e.g. `[0, 2, 5]`) no longer drop trials
   silently.
+- `sorting/metrics.py`: `est_snr` and (transitively)
+  `calc_weighted_snr` no longer return a bogus ~1e15-scale SNR
+  when a cluster has identical waveforms.  `est_snr` compared
+  `noise_std == 0` exactly; mean-subtraction on identical rows
+  produces a residual std around 1e-15 that slipped past that
+  guard, and the function returned an essentially-infinite SNR
+  instead of `np.nan`.  Now the threshold is `1e-12 ⋅ max(sig_amp, 1)`
+  (data-scale relative).  `calc_weighted_snr` then **excludes** any
+  NaN-returning cluster from the weighted mean, renormalises the
+  remaining weights, and emits a `RuntimeWarning` naming the
+  culprit cluster(s).  Previously a single degenerate cluster
+  silently poisoned the entire recording's `snr_weighted` with
+  NaN; the new behaviour both surfaces the issue and recovers a
+  partial answer from the well-behaved clusters.
+- `sorting/metrics.py`: `d_prime_pairwise_matrix` replaces the
+  exact `pooled_std == 0` guard with `pooled_std < 1e-12`.  Float
+  rounding from `np.sqrt(tiny + tiny)` could otherwise slip
+  through and produce a division-by-near-zero blow-up.
+- `tests/test_sorting_preprocess.py::TestSingleCluster::test_k1_zarr_roundtrip`:
+  the `np.isnan(silhouette_mean) or silhouette_mean is None`
+  assertion failed every time the zarr-attrs path serialised the
+  NaN as JSON `null`.  Python evaluates the `or` operands
+  left-to-right, so `np.isnan(None)` was called first and raised
+  `TypeError` before the short-circuit could help.  Reordered to
+  `silhouette_mean is None or np.isnan(silhouette_mean)`; the test
+  now passes against every numpy/zarr combination.
+- `tests/test_sorting_preprocess.py::TestSingleCluster`: the k=1
+  smoke tests previously only checked that result keys existed.
+  They now also assert OSI/DSI live in `[0, 1]` (or are NaN),
+  preferred orientation lives in `[0, 180°)` (or is NaN), and the
+  zarr round-trip preserves `waveforms` / `spike_times` / `trials`
+  / `angles` bit-for-bit against the original input.
 
 ### Documentation
 
@@ -202,11 +274,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it the right estimator for spike-sorting feature matrices, and
   primary references (Ledoit & Wolf 2004, Schmitzer-Torbert et al.
   2005, Hill et al. 2011).  Behaviour is unchanged.
+- `neural_cca/synthetic.py`: rewrote the `make_tuned_spikes`
+  docstring blurb that called it "test-friendly" without saying
+  why.  It now states explicitly that the function does **not**
+  enforce an absolute refractory (so seeded test counts stay
+  stable even if `poisson_train`'s refractory logic evolves) and
+  points readers at `make_two_unit_demo` for the refractory-
+  respecting demo path.
 
 ### Internal
 
 - `.github/workflows/tests.yml`: added Python 3.13 to the matrix
   (already advertised in `classifiers`).
+- `pyproject.toml`: `[tool.pytest.ini_options]` gained a
+  `filterwarnings` list silencing `DeprecationWarning` from
+  `matplotlib` and `pyparsing` so the test output is no longer
+  cluttered with ~12 `PyparsingDeprecationWarning`s the first
+  time matplotlib's font-config parser fires.  These warnings
+  come from external libraries and are not actionable from this
+  package.
 
 ## [0.1.1] - 2026-05-25
 

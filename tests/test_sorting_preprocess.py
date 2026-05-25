@@ -199,9 +199,16 @@ class TestPipelinePreprocess:
         assert result.metadata["preprocess"] == "pca"
         assert result.metadata["pca_components"] == 4
 
-    def test_quality_metrics_use_raw_waveforms(self):
-        """SNR (a quality metric) should be the same regardless of
-        preprocessing — quality metrics live in raw waveform space."""
+    def test_amplitude_metrics_use_raw_waveforms(self):
+        """Amplitude-based metrics (SNR, peak-amplitude SNR, drift, …)
+        live in raw-waveform space regardless of *preprocess*.
+
+        Voltage amplitude is only meaningful in the raw signal, so
+        these metrics ignore the preprocessing pipeline.  Feature-
+        space metrics (silhouette, isolation distance, L-ratio,
+        d-prime) by contrast use the same space the clustering ran in
+        — see :func:`test_feature_space_metrics_depend_on_preprocess`.
+        """
         data = _make_sorting_data()
         r_none = run_sorting_pipeline(
             data,
@@ -219,9 +226,6 @@ class TestPipelinePreprocess:
             plot=False,
             rng=0,
         )
-        # SNR is computed on raw waveforms, so it does not depend on
-        # the preprocessing mode (provided both runs converge to the
-        # same clustering, which they do here for well-separated data).
         assert (
             r_none.quality["snr_per_cluster"].keys() == r_zscore.quality["snr_per_cluster"].keys()
         )
@@ -230,6 +234,93 @@ class TestPipelinePreprocess:
                 r_zscore.quality["snr_per_cluster"][cid],
                 rel=1e-9,
             )
+
+    def test_feature_space_metrics_depend_on_preprocess(self):
+        """Silhouette is now reported on the *preprocessed* space so it
+        matches the value k-selection sees.  Two different
+        preprocessing modes on the same well-separated data therefore
+        give two different ``silhouette_mean`` values.
+        """
+        data = _make_sorting_data()
+        r_none = run_sorting_pipeline(
+            data,
+            n_clusters=2,
+            preprocess="none",
+            compute_os=False,
+            plot=False,
+            rng=0,
+        )
+        r_pca = run_sorting_pipeline(
+            data,
+            n_clusters=2,
+            preprocess="pca",
+            pca_components=2,
+            compute_os=False,
+            plot=False,
+            rng=0,
+        )
+        # Same labels (well-separated data) but the silhouette space
+        # differs, so the scalar must differ too.
+        assert r_none.quality["silhouette_mean"] != r_pca.quality["silhouette_mean"]
+
+    def test_pipeline_silhouette_matches_k_search(self):
+        """When the pipeline auto-selects k, the silhouette reported in
+        ``quality`` must equal the score recorded in ``k_search`` for
+        the chosen k.  Before the fix the two numbers lived in
+        different feature spaces and silently disagreed.
+        """
+        data = _make_sorting_data()
+        result = run_sorting_pipeline(
+            data,
+            k_range=range(2, 4),
+            preprocess="zscore_pca",
+            pca_components=3,
+            compute_os=False,
+            plot=False,
+            rng=0,
+        )
+        chosen_k = result.n_clusters
+        assert result.k_search is not None
+        assert result.quality["silhouette_mean"] == pytest.approx(
+            result.k_search[chosen_k], abs=1e-10
+        )
+
+    def test_pipeline_forwards_rng_to_os_bootstrap(self):
+        """``rng`` must propagate into per-cluster bootstrap CIs.
+
+        Before the fix, ``run_sorting_pipeline`` coerced ``rng`` for
+        sklearn but never handed it to ``evaluate_os_per_cluster``, so
+        any bootstrap CI computed downstream was unseeded.  We can't
+        easily request a CI through the pipeline directly, but we can
+        verify the seed reaches ``evaluate_os_per_cluster`` by patching
+        it and reading what was passed.
+        """
+        from unittest.mock import patch
+
+        from neural_cca.sorting import sorting as _sorting_mod
+
+        data = _make_sorting_data()
+        # Wrap the real implementation so the pipeline still produces a
+        # SortingResult; record the ``rng`` kwarg actually passed.
+        with patch.object(
+            _sorting_mod,
+            "evaluate_os_per_cluster",
+            wraps=_sorting_mod.evaluate_os_per_cluster,
+        ) as mock_eval:
+            run_sorting_pipeline(
+                data,
+                n_clusters=2,
+                compute_os=True,
+                plot=False,
+                rng=12345,
+            )
+        assert mock_eval.call_count == 1
+        kwargs = mock_eval.call_args.kwargs
+        assert "rng" in kwargs, (
+            "run_sorting_pipeline must pass rng to evaluate_os_per_cluster "
+            "for per-cluster bootstrap reproducibility."
+        )
+        assert kwargs["rng"] == 12345
 
     def test_default_preprocess_is_zscore_pca(self):
         """The defensible methods-section pipeline is the default.

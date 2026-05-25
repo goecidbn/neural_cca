@@ -60,7 +60,7 @@ def _rayleigh_test(angles_rad: npt.NDArray, weights: npt.NDArray) -> float:
 
 def dosi_circular_normalised(
     activities: npt.NDArray[np.float64],
-    angles: int | npt.NDArray[np.float64] = 8,
+    angles: int | npt.NDArray[np.float64] | None = None,
     direction_selectivity: bool = False,
     return_unnormalised: bool = False,
     p_value: bool = False,
@@ -81,8 +81,13 @@ def dosi_circular_normalised(
 
     Args:
         activities: Activity at each angle (e.g. mean firing rates).
-        angles: Number of equally-spaced angles (int) or explicit angle
-            array in degrees.
+        angles: Either an explicit angle array (degrees), or an
+            ``int`` *N* — in which case the function builds
+            ``np.linspace(0, 360, N, endpoint=False)``.  When given as
+            an int, *N* **must** equal ``len(activities)``; otherwise
+            the broadcast that follows would silently mis-align rates
+            with angles.  ``None`` (the default) is equivalent to
+            ``angles=len(activities)``.
         direction_selectivity: If ``True`` compute DSI; otherwise OSI.
         return_unnormalised: If ``True`` return the complex vector sum.
         p_value: If ``True`` return a dict ``{"value": float,
@@ -92,11 +97,28 @@ def dosi_circular_normalised(
     Returns:
         Normalised index (float), unnormalised complex vector sum, or
         dict with ``value`` and ``p_value`` keys.
+
+    Raises:
+        ValueError: When *angles* is an ``int`` that does not match
+            ``len(activities)``.
     """
     activities = np.asarray(activities, dtype=np.float64)
 
+    # Default to equispaced angles matching the activities length so
+    # the int-shorthand is never silently wrong.  The previous magic
+    # default of ``8`` would error out (shape mismatch) for any other
+    # activity length.
+    if angles is None:
+        angles = len(activities)
     if isinstance(angles, (int, np.integer)):
-        angles = np.linspace(0, 360, int(angles), endpoint=False)
+        n_ang = int(angles)
+        if n_ang != len(activities):
+            raise ValueError(
+                "When `angles` is given as an integer it must equal "
+                f"len(activities); got angles={n_ang}, "
+                f"len(activities)={len(activities)}."
+            )
+        angles = np.linspace(0, 360, n_ang, endpoint=False)
     else:
         angles = np.asarray(angles, dtype=np.float64)
 
@@ -196,20 +218,18 @@ def gosi(
     pref_idx = int(np.argmin(circ_dist(angles, pref_angle, period=180.0)))
     r_pref = float(responses[pref_idx])
 
-    # Orthogonal = ±90° from preferred.  In orientation space (period
-    # 180°) +90° and −90° are the *same* orthogonal axis, so both lookups
-    # converge to the same sample; we keep the symmetric form for clarity
-    # and so that direction data sampled on a fine grid still averages
-    # the two nearest samples to the orthogonal target.  ``period=180``
-    # is essential here: the default 360° period would treat orientation
-    # wraparound as if 0° and 180° were distinct, picking the wrong
-    # sample for any preferred orientation near the 0°/180° seam.
-    orth_angles = [wrap180(pref_angle + 90), wrap180(pref_angle - 90)]
-    orth_responses = []
-    for oa in orth_angles:
-        idx = int(np.argmin(circ_dist(angles, oa, period=180.0)))
-        orth_responses.append(responses[idx])
-    r_orth = float(np.mean(orth_responses))
+    # Orthogonal = pref + 90° in orientation space.  ``+90`` and
+    # ``−90`` from the preferred orientation fold to the *same* angle
+    # modulo 180° (``wrap180(p+90) == wrap180(p-90)``), so a single
+    # lookup suffices — the previous "average of two lookups" was
+    # algebraically identical to one lookup and amounted to dead code.
+    # ``period=180`` is essential here: the default 360° period would
+    # treat orientation wraparound as if 0° and 180° were distinct,
+    # picking the wrong sample for any preferred orientation near the
+    # 0°/180° seam.
+    orth_angle = wrap180(pref_angle + 90)
+    orth_idx = int(np.argmin(circ_dist(angles, orth_angle, period=180.0)))
+    r_orth = float(responses[orth_idx])
 
     denom = r_pref + r_orth
     # NaN (not 0.0) when both pref and orth responses are zero — a

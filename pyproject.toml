@@ -56,7 +56,10 @@ Documentation = "https://goecidbn.github.io/neural_cca/"
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+# Match the lowest supported runtime (`requires-python = ">=3.10"`) so
+# ruff never suggests syntax (e.g. PEP 695 type aliases) that 3.10
+# users cannot adopt.
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "N"]

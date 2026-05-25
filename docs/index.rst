@@ -50,8 +50,14 @@ Quick start
 
    data   = load_from_arrays(waveforms, spike_times, trials, angles)
    result = run_sorting_pipeline(data)
-   os     = get_os_metrics(spike_times, trials=trials, angles=angles,
-                           labels=result.labels, cluster=0)
+   os     = get_os_metrics(
+       spike_times,
+       trials,
+       angles,
+       all_clusters=False,
+       cluster_labels=result.cluster_labels,
+       cluster_id=0,
+   )
 
    # persist to zarr
    to_zarr_flat(result, data, "my_sorting.zarr")

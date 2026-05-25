@@ -48,6 +48,8 @@ from .sorting import (
     SortingData,
     SortingResult,
     amplitude_drift,
+    # Batch driver
+    batch_sort_experiment,
     d_prime,
     d_prime_pairwise_matrix,
     evaluate_os_per_cluster,

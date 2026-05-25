@@ -14,6 +14,9 @@ sorting
 .. automodule:: neural_cca.sorting.sorting
    :members:
 
+.. automodule:: neural_cca.sorting.batch
+   :members:
+
 .. automodule:: neural_cca.sorting.metrics
    :members:
 

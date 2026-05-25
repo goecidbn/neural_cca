@@ -243,3 +243,141 @@ class TestBootstrapCIStrata:
                 np.arange(8),
                 lambda d, s: 0.0,
             )
+
+
+# ======================================================================
+# Tests: evaluate_os_per_cluster shares its rng across clusters
+# ======================================================================
+
+
+class TestEvaluateOsPerClusterRng:
+    """Regression tests for the rng materialisation fix.
+
+    Before the fix, an integer ``rng`` argument was forwarded raw to
+    every ``get_os_metrics`` call, and each call rebuilt a fresh
+    ``Generator`` from the same seed.  That made the bootstrap streams
+    in different clusters **identical**, defeating the point of
+    "share one stream across clusters" described in the docstring.
+
+    The fix materialises a single ``Generator`` at the top of
+    ``evaluate_os_per_cluster`` (via ``make_rng``) and reuses it.
+    """
+
+    def test_integer_seed_advances_across_clusters(self):
+        from neural_cca.sorting.sorting import evaluate_os_per_cluster
+        from neural_cca.sorting.containers import SortingData
+
+        st, tr, angles, _ = _make_tuned_spikes(
+            preferred_angle=90.0, sigma_deg=25.0
+        )
+        # Two synthetic clusters so the loop runs twice.
+        cluster_labels = np.zeros(len(st), dtype=np.int64)
+        cluster_labels[len(st) // 2 :] = 1
+
+        # Match _make_tuned_spikes defaults so the SortingData container
+        # has consistent shape: waveforms are unused for OS metrics but
+        # must satisfy the n_spikes invariant.
+        data = SortingData(
+            waveforms=np.zeros((len(st), 8), dtype=np.float64),
+            spike_times=st.astype(np.float64),
+            trials=tr.astype(np.int64),
+            angles=angles.astype(np.float64),
+            n_trials=len(angles),
+            stim_window=(0.5, 2.5),
+            stim_frequency=2.0,
+        )
+        # Patch get_os_metrics and capture the Generator passed in for
+        # each cluster.  If the fix is in place, both calls receive the
+        # *same* Generator object that has been advanced between calls.
+        from unittest.mock import patch
+
+        from neural_cca.sorting import sorting as _sorting_mod
+
+        captured: list[object] = []
+
+        real = _sorting_mod.get_os_metrics
+
+        def fake(*args, **kwargs):
+            captured.append(kwargs.get("rng"))
+            return real(*args, **kwargs)
+
+        with patch.object(_sorting_mod, "get_os_metrics", side_effect=fake):
+            evaluate_os_per_cluster(data, cluster_labels, rng=7)
+
+        assert len(captured) == 2
+        # Both calls saw a Generator (not the int 7) and it is the
+        # *same* Generator instance — proving the rng was materialised
+        # once and shared across clusters.
+        assert isinstance(captured[0], np.random.Generator)
+        assert captured[0] is captured[1]
+
+
+# ======================================================================
+# Tests: _build_trial_filter rejects bad trial IDs
+# ======================================================================
+
+
+class TestTrialIndexValidation:
+    """The trial-index contract is now validated explicitly.
+
+    ``angles[k]`` is the stimulus angle of trial ``k``, so every value
+    in ``trials`` must be a valid index into ``angles``.  Out-of-range
+    trial IDs used to silently mis-map angles; they now raise.
+    """
+
+    def test_out_of_range_trial_raises(self):
+        from neural_cca.tuning._filter import _build_trial_filter
+
+        # 5 angles → valid trial IDs are 0..4.  Trial 7 is out of range.
+        with pytest.raises(ValueError, match=r"\[0, len\(angles\)\)"):
+            _build_trial_filter(
+                spike_times=np.array([0.7, 1.2]),
+                trials=np.array([0, 7]),
+                angles=np.linspace(0, 144, 5),
+            )
+
+    def test_negative_trial_raises(self):
+        from neural_cca.tuning._filter import _build_trial_filter
+
+        with pytest.raises(ValueError, match=r"\[0, len\(angles\)\)"):
+            _build_trial_filter(
+                spike_times=np.array([0.7, 1.2]),
+                trials=np.array([-1, 0]),
+                angles=np.linspace(0, 144, 5),
+            )
+
+    def test_in_range_trials_ok(self):
+        from neural_cca.tuning._filter import _build_trial_filter
+
+        # All trial IDs valid — should not raise.
+        out = _build_trial_filter(
+            spike_times=np.array([0.7, 1.2, 2.1]),
+            trials=np.array([0, 1, 4]),
+            angles=np.linspace(0, 144, 5),
+        )
+        assert out.n_trials == 5
+        # Trials 2 and 3 have no spikes, so their MFR is 0.
+        assert out.mfrs[2] == 0.0 and out.mfrs[3] == 0.0
+
+
+# ======================================================================
+# Tests: dosi_circular_normalised int-shorthand validation
+# ======================================================================
+
+
+class TestDosiIntShorthand:
+    def test_int_shorthand_must_match_activities(self):
+        with pytest.raises(ValueError, match="must equal len"):
+            dosi_circular_normalised(np.ones(10), 8)
+
+    def test_none_defaults_to_activity_length(self):
+        # ``angles=None`` is equivalent to ``angles=len(activities)``,
+        # so a flat 12-bin tuning curve yields OSI ≈ 0.
+        val = dosi_circular_normalised(np.ones(12))
+        assert val < 1e-12
+
+    def test_explicit_matching_int_still_works(self):
+        # Symmetric orientation profile across 8 evenly-spaced angles.
+        activities = np.array([20, 5, 1, 5, 20, 5, 1, 5], dtype=float)
+        val = dosi_circular_normalised(activities, 8)
+        assert val > 0.3

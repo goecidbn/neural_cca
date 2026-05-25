@@ -248,11 +248,19 @@ def calc_mfr_trial(
             each trial (seconds). The mean firing rate is computed
             from spikes that fall in ``(onset, end]`` and divided by
             ``end - onset``.
-        n_trials: Number of trials.  Defaults to
-            ``len(unique(trials))``.
+        n_trials: Number of trials.  When given, the result covers
+            trial IDs ``0..n_trials-1`` (silent trials get rate 0).
+            When ``None``, the trial set is derived as ``max(trials)
+            + 1`` so the result still covers every observed trial
+            (and every "silent" trial whose index is below the max).
+            An earlier version used ``len(unique(trials))`` which
+            silently undercounted whenever trial IDs were not the
+            dense set ``0..n_observed-1``.
 
     Returns:
-        Dict mapping trial index to mean firing rate (Hz).
+        Dict mapping trial index to mean firing rate (Hz).  Keys
+        cover ``range(n_trials)`` (or ``range(max(trials) + 1)`` when
+        ``n_trials`` is ``None``).
 
     Raises:
         ValueError: If ``cluster_labels`` and ``cluster_id`` are not
@@ -263,7 +271,14 @@ def calc_mfr_trial(
 
     s_on, s_end = stim_window
     stim_duration = s_end - s_on
-    n_trials = n_trials if n_trials is not None else len(np.unique(trials))
+    if n_trials is None:
+        # ``max(trials) + 1`` makes the result cover every trial that
+        # appears in the data (and any silent trials whose index is
+        # below the max).  ``len(unique(trials))`` was the previous
+        # default and silently undercounted whenever trial IDs were
+        # sparse (e.g. ``[0, 2, 5]`` would give n_trials=3 and miss
+        # trial 5 entirely).
+        n_trials = int(trials.max()) + 1 if len(trials) > 0 else 0
 
     mfr_by_trial: dict[int, float] = {}
     for trial_idx in np.arange(n_trials):
@@ -277,7 +292,7 @@ def calc_mfr_trial(
                 (sts > s_on) & (sts <= s_end) & (cluster_labels[trial_mask] == cluster_id)
             )
 
-        mfr_by_trial[trial_idx] = float(n_spikes) / stim_duration
+        mfr_by_trial[int(trial_idx)] = float(n_spikes) / stim_duration
 
     return mfr_by_trial
 
@@ -717,23 +732,38 @@ def autocorrelogram(
     counts = np.zeros(n_bins, dtype=np.int64)
 
     def _accumulate(st_sorted: np.ndarray) -> None:
-        # Iterate over ordered pairs (i, j>i) of distinct spikes within
-        # the effective range.  For each pair we add both +diff and
-        # -diff so the symmetric histogram is filled in one pass.
-        # i == j is impossible by construction, so no self-pairs ever
-        # enter ``counts``.
-        for i in range(len(st_sorted)):
-            j = i + 1
-            while j < len(st_sorted) and (st_sorted[j] - st_sorted[i]) <= effective_max_lag:
-                diff = st_sorted[j] - st_sorted[i]
-                counts[:] = (
-                    counts
-                    + np.histogram(
-                        [diff, -diff],
-                        bins=edges,
-                    )[0]
-                )
-                j += 1
+        # For each spike i, find the rightmost j such that
+        # ``st_sorted[j] - st_sorted[i] <= effective_max_lag``.  Then
+        # collect ``st_sorted[i+1:j] - st_sorted[i]`` as the positive
+        # diffs and histogram them all at once (and mirror once for
+        # the negative-lag side).
+        #
+        # The previous implementation called ``np.histogram`` once per
+        # pair, which is O(N²) histogram calls.  ``searchsorted``
+        # collapses the pair search to O(N log N) and the histogram
+        # cost to a single call per spike train regardless of how many
+        # pairs were collected.  Self-pairs (i == j) are excluded by
+        # construction (we slice ``i+1:upper_idx[i]``).
+        n = len(st_sorted)
+        if n < 2:
+            return
+        upper_idx = np.searchsorted(
+            st_sorted,
+            st_sorted + effective_max_lag,
+            side="right",
+        )
+        parts: list[np.ndarray] = []
+        for i in range(n - 1):
+            j_end = int(upper_idx[i])
+            if j_end > i + 1:
+                parts.append(st_sorted[i + 1 : j_end] - st_sorted[i])
+        if not parts:
+            return
+        d = np.concatenate(parts)
+        # Histogram +d and -d separately so we never allocate the full
+        # ``[d, -d]`` concatenation (twice the memory for no gain).
+        counts[:] = counts + np.histogram(d, bins=edges)[0]
+        counts[:] = counts + np.histogram(-d, bins=edges)[0]
 
     if trials is None:
         # Continuous mode: sort globally and accumulate all pairs.

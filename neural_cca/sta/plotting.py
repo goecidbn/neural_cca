@@ -69,7 +69,11 @@ def plot_isi_histogram(
     Returns:
         ``Axes`` with the plot.
     """
-    from .analysis import _per_trial_isis  # avoid circular import at module level
+    # ``_per_trial_isis`` is an underscore-private helper and is
+    # therefore deliberately *not* in the module-top ``from .analysis
+    # import (...)`` block.  Pull it in locally rather than promoting
+    # an internal name into this module's namespace.
+    from .analysis import _per_trial_isis
 
     per_trial = _per_trial_isis(spike_times, trials)
     isis = np.concatenate(per_trial) if per_trial else np.empty(0)

@@ -327,6 +327,42 @@ class TestAutocorrelogram:
         mid = len(counts) // 2
         assert counts[mid] == 0, "Zero-lag bin should be 0"
 
+    def test_vectorised_matches_naive(self):
+        """Regression test for the vectorised pair accumulation.
+
+        Rewriting the inner pair loop to use ``np.searchsorted`` +
+        batched ``np.histogram`` removes an O(n²) histogram-call hot
+        spot.  This test pins the numerical equivalence against the
+        naïve, per-pair implementation on a small Poisson train so
+        any future rewrite is forced to remain bit-identical (or
+        at least bin-identical).
+        """
+        rng = np.random.default_rng(123)
+        # ~150 spikes drawn from a 100 Hz Poisson process across 1.5 s
+        st = np.sort(rng.uniform(0.0, 1.5, 150))
+        bin_size = 0.001
+        max_lag = 0.05
+
+        lags, counts = autocorrelogram(st, bin_size=bin_size, max_lag=max_lag)
+
+        # Naïve reference: iterate every ordered pair, accumulate ±diff
+        # via per-pair histograms.  Stays the same construction the
+        # original implementation used so we can pin the new code to
+        # the old number bin-for-bin.
+        n_half = int(np.ceil(max_lag / bin_size))
+        n_bins = 2 * n_half
+        edges = np.linspace(-n_half * bin_size, n_half * bin_size, n_bins + 1)
+        ref = np.zeros(n_bins, dtype=np.int64)
+        eff_lag = n_half * bin_size
+        for i in range(len(st)):
+            for j in range(i + 1, len(st)):
+                d = st[j] - st[i]
+                if d > eff_lag:
+                    break
+                ref += np.histogram([d, -d], bins=edges)[0]
+
+        np.testing.assert_array_equal(counts, ref)
+
 
 # ---------------------------------------------------------------------------
 # Fano factor

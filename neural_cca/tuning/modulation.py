@@ -144,16 +144,14 @@ def cross_orientation_suppression(
         # NaN reflects "cannot compute" rather than "no suppression".
         return np.nan
 
-    # Find orthogonal (±90°) using circular distance with the
-    # orientation period (180°). Linear distance picks the wrong sample
-    # whenever the orthogonal target sits across the 0°/180° seam, and
-    # the default 360° period would treat orientation wraparound as if
-    # 0° and 180° were distinct.
-    orth_angles = [wrap180(pref_angle + 90), wrap180(pref_angle - 90)]
-    orth_responses = []
-    for oa in orth_angles:
-        idx = int(np.argmin(circ_dist(angles, oa, period=180.0)))
-        orth_responses.append(responses[idx])
-    r_orth = float(np.mean(orth_responses))
+    # Orthogonal = pref + 90° in orientation space.  ``+90`` and
+    # ``−90`` fold to the same angle modulo 180°, so a single lookup
+    # is enough; the previous two-element average was dead code.
+    # ``period=180`` is essential here — the default 360° period
+    # would mis-target the orthogonal sample whenever the orthogonal
+    # angle straddles the 0°/180° seam.
+    orth_angle = wrap180(pref_angle + 90)
+    orth_idx = int(np.argmin(circ_dist(angles, orth_angle, period=180.0)))
+    r_orth = float(responses[orth_idx])
 
     return 1.0 - r_orth / r_pref

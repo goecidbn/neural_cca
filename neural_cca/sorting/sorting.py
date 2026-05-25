@@ -23,6 +23,7 @@ from sklearn.metrics import silhouette_score
 # unavailable for any reason at install time the import will fail at
 # module load and the user gets a clean error.  ``tuning`` is
 # part of the same distribution so this is always installed.
+from .._utils import make_rng
 from ..tuning.tuning import get_os_metrics
 from .containers import SortingData, SortingResult
 from .metrics import (
@@ -48,12 +49,10 @@ __all__ = [
     "evaluate_os_per_cluster",
     "run_sorting_pipeline",
     "PreprocessMode",
-    "RngLike",
 ]
 
 
 PreprocessMode = Literal["none", "center", "zscore", "pca", "zscore_pca"]
-RngLike = "np.random.Generator | int | None"
 
 
 def _as_seed(rng: np.random.Generator | int | None) -> int | None:
@@ -265,6 +264,7 @@ def evaluate_sorting(
     cluster_labels: npt.NDArray[np.int64],
     refractory_period: float = 0.001,
     compute_advanced: bool = True,
+    features: npt.NDArray[np.float64] | None = None,
 ) -> dict:
     """Compute sorting-quality metrics.
 
@@ -292,6 +292,18 @@ def evaluate_sorting(
         compute_advanced: Include isolation distance, L-ratio,
             d-prime, waveform stability, amplitude drift,
             peak amplitude SNR, and fraction-missing metrics.
+        features: Optional ``(n_spikes, n_features)`` feature matrix
+            used for the *feature-space* metrics: silhouette,
+            isolation distance, L-ratio, d-prime.  When ``None``
+            (default) these metrics fall back to ``data.waveforms``
+            for backwards compatibility.  :func:`run_sorting_pipeline`
+            forwards the preprocessed feature matrix here so the
+            silhouette stored in ``quality`` agrees with the value
+            used during k-selection.  Amplitude-based metrics
+            (``snr_*``, ``peak_amplitude_snr``,
+            ``waveform_stability``, ``amplitude_drift``,
+            ``fraction_missing``) always operate on raw waveforms
+            because amplitude is only meaningful in voltage space.
 
     Returns:
         Dict of metric names to values.
@@ -300,9 +312,13 @@ def evaluate_sorting(
         raise ValueError("At least 2 clusters are required for evaluation.")
     wv = data.waveforms
     st = data.spike_times
+    # Feature-space metrics use ``features`` when provided so they match
+    # the space the clustering was actually performed in.  Falling back
+    # to ``wv`` keeps the standalone behaviour unchanged.
+    feat = wv if features is None else np.asarray(features, dtype=np.float64)
 
-    sil_mean = float(silhouette_score(wv, cluster_labels))
-    neg_sil = neg_silhouette_score(wv, cluster_labels, relative=True)
+    sil_mean = float(silhouette_score(feat, cluster_labels))
+    neg_sil = neg_silhouette_score(feat, cluster_labels, relative=True)
     abs_rpvs = rpvs(
         st, cluster_labels, refractory_period=refractory_period, relative=False, all_clusters=True
     )
@@ -327,9 +343,12 @@ def evaluate_sorting(
     if compute_advanced:
         cl_kw = {"cluster_labels": cluster_labels}
         _adv: list[tuple[str, object, tuple, dict]] = [
-            ("isolation_distance", isolation_distance, (wv, cluster_labels), {}),
-            ("l_ratio", l_ratio, (wv, cluster_labels), {}),
-            ("d_prime", d_prime, (wv, cluster_labels), {}),
+            # Feature-space metrics (Mahalanobis / mean separation) —
+            # use ``feat`` so they live in the clustering space.
+            ("isolation_distance", isolation_distance, (feat, cluster_labels), {}),
+            ("l_ratio", l_ratio, (feat, cluster_labels), {}),
+            ("d_prime", d_prime, (feat, cluster_labels), {}),
+            # Amplitude / shape metrics — always raw waveforms.
             ("peak_amplitude_snr", peak_amplitude_snr, (wv,), cl_kw),
             ("waveform_stability", waveform_stability, (st, wv), cl_kw),
             ("amplitude_drift", amplitude_drift, (wv,), cl_kw),
@@ -364,14 +383,24 @@ def evaluate_os_per_cluster(
         bin_size: PSTH bin width (seconds).
         rng: Generator, int seed, or ``None`` forwarded to
             :func:`get_os_metrics` so any per-cluster bootstrap CIs are
-            reproducible.  When a ``Generator`` is passed it is shared
-            across clusters, so each successive cluster advances the
-            same stream.
+            reproducible.  A single ``Generator`` is materialised here
+            (via :func:`neural_cca._utils.make_rng`) and **shared**
+            across every cluster, so the full per-cluster bootstrap
+            sequence is reproducible from one integer seed.  An earlier
+            version passed the raw argument through, which made integer
+            seeds produce *identical* bootstrap streams in every
+            cluster (each ``get_os_metrics`` call rebuilt a fresh
+            Generator from the same seed).
 
     Returns:
         ``{cluster_id: {metric_name: value, ...}, ...}`` or ``None``
         if tuning is not available.
     """
+    # Materialise once and share across clusters so successive bootstraps
+    # advance the same stream.  ``make_rng`` returns the Generator
+    # unchanged if one is already passed in, wraps an integer seed in a
+    # ``SeedSequence``, and falls back to OS entropy on ``None``.
+    boot_rng = make_rng(rng)
     result: dict[int, dict] = {}
     for cl in np.unique(cluster_labels):
         result[int(cl)] = get_os_metrics(
@@ -385,7 +414,7 @@ def evaluate_os_per_cluster(
             stim_window=data.stim_window,
             stim_frequency=data.stim_frequency,
             return_verbose=1,
-            rng=rng,
+            rng=boot_rng,
         )
     return result
 
@@ -437,39 +466,56 @@ def run_sorting_pipeline(
             mode (ignored otherwise).
 
     Returns:
-        ``SortingResult`` with all outputs.  Quality metrics that
-        operate on raw waveforms (SNR, isolation distance, etc.) are
-        always computed on ``data.waveforms`` regardless of the
-        preprocessing mode.
+        ``SortingResult`` with all outputs.
+
+        Feature-space metrics (``silhouette_mean``, ``neg_silhouette_rel``,
+        ``isolation_distance``, ``l_ratio``, ``d_prime``) are computed
+        on the *preprocessed* feature matrix — the same space the
+        clustering was performed in — so the ``silhouette_mean`` in
+        ``quality`` agrees with the value used by k-selection.
+        Amplitude/shape metrics (``snr_*``, ``peak_amplitude_snr``,
+        ``waveform_stability``, ``amplitude_drift``,
+        ``fraction_missing``) are always computed on raw
+        ``data.waveforms`` because amplitude is only meaningful in
+        voltage space.
     """
     # Coerce rng once so all downstream sklearn calls share the same seed
     # (and so the metadata reflects what was actually used).
     seed = _as_seed(rng)
 
+    # Preprocess once and reuse: clustering and the feature-space
+    # quality metrics (silhouette / isolation / L-ratio / d-prime) both
+    # read from the same matrix, so the silhouette stored in
+    # ``quality`` is the same number that k-selection saw.
+    features = _preprocess_waveforms(
+        data.waveforms,
+        preprocess,
+        pca_components=pca_components,
+        rng=seed,
+    )
+
     # --- 1. Determine k ---
     k_search: dict | None = None
     if n_clusters is None:
-        n_clusters, k_search = find_optimal_k(
-            data.waveforms,
+        n_clusters, k_search = _find_optimal_k_from_features(
+            features,
             k_range=k_range,
-            rng=seed,
+            seed=seed,
             n_init=n_init,
-            preprocess=preprocess,
-            pca_components=pca_components,
         )
 
     # --- 2. Cluster ---
-    cluster_labels, km_model = sort_spikes(
-        data.waveforms,
-        n_clusters=n_clusters,
-        rng=seed,
-        n_init=n_init,
-        preprocess=preprocess,
-        pca_components=pca_components,
-    )
+    km = KMeans(n_clusters=n_clusters, random_state=seed, n_init=n_init)
+    cluster_labels = km.fit_predict(features).astype(np.int64)
+    km_model = km
 
     # --- 3. Quality ---
-    quality = evaluate_sorting(data, cluster_labels, refractory_period=refractory_period)
+    quality = evaluate_sorting(
+        data,
+        cluster_labels,
+        refractory_period=refractory_period,
+        features=features,
+    )
 
     # --- 4. OS metrics ---
     os_metrics: dict[int, dict] | None = None
@@ -478,6 +524,7 @@ def run_sorting_pipeline(
             data,
             cluster_labels,
             bin_size=bin_size,
+            rng=seed,
         )
 
     # --- 5. Plot ---
@@ -505,3 +552,24 @@ def run_sorting_pipeline(
             "pca_components": pca_components,
         },
     )
+
+
+def _find_optimal_k_from_features(
+    features: npt.NDArray[np.float64],
+    k_range: Sequence[int],
+    seed: int | None,
+    n_init: str | int,
+) -> tuple[int, dict[int, float]]:
+    """Silhouette-based k-selection on an already-preprocessed feature matrix.
+
+    Used by :func:`run_sorting_pipeline` so the preprocessing happens
+    exactly once.  Public callers should keep using
+    :func:`find_optimal_k`, which preprocesses internally.
+    """
+    scores: dict[int, float] = {}
+    for k in k_range:
+        km = KMeans(n_clusters=k, random_state=seed, n_init=n_init)
+        labels = km.fit_predict(features)
+        scores[k] = float(silhouette_score(features, labels))
+    best_k = max(scores, key=scores.get)  # type: ignore[arg-type]
+    return best_k, scores

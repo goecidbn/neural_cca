@@ -133,6 +133,58 @@ class TestTuningCurveInterpolation:
         with pytest.raises(ValueError, match="Unknown model"):
             tuning_curve_interpolation(np.ones(8), np.arange(8) * 22.5, model="invalid")
 
+    # ------------------------------------------------------------------
+    # Regression tests — preferred angle near the data wraparound
+    # ------------------------------------------------------------------
+    # Before the fix, ``tuning_curve_interpolation`` sampled the fitted
+    # model only across ``[angles.min(), angles.max()]``.  For data
+    # sampled on the standard discrete grid (e.g. 0..170° or 0..330°)
+    # that misses the wraparound, so a cell whose true preferred angle
+    # lives near 0° / 180° (orientation) or near 0° / 360° (direction)
+    # got reported as some angle inside the sampled range.  These tests
+    # pin the new contract: sampling is over one full period so the
+    # argmax can land anywhere on the circle.
+
+    def test_orientation_wraparound_near_180(self):
+        """Preferred orientation near 180° must round-trip via the fit.
+
+        Orientation has period 180°, so 175° is one degree away from
+        the seam.  The fit's preferred angle is in ``[0, 180)``; we
+        accept ``< 5°`` or ``> 175°`` (≡ 0° mod 180) since both are
+        within ±5° of the truth on the orientation circle.
+        """
+        oris = np.linspace(0, 165, 12)  # 0, 15, …, 165 — does not span 175
+        resp = _von_mises_response(oris, kappa=3.0, theta0_deg=175.0)
+        pref = tuning_curve_interpolation(
+            resp, oris, model="von_mises_orientation"
+        )
+        # The fitted ``preferred_angle`` is mod 180, so 175° folds to
+        # the same orientation as ~−5°.
+        circ_err = min(abs(pref - 175.0), abs(pref - 175.0 + 180.0), abs(pref + 5.0))
+        assert circ_err < 5.0, f"Expected wraparound result near 175°, got {pref:.1f}°"
+
+    def test_direction_wraparound_near_360(self):
+        """Preferred direction near 350° must round-trip via the fit."""
+        oris = np.linspace(0, 330, 12)  # 0, 30, …, 330 — never reaches 350
+        # Direction von Mises with kappa=3, preferred dir = 350°.
+        theta = np.deg2rad(oris)
+        theta0 = np.deg2rad(350.0)
+        resp = (
+            10.0 * np.exp(3.0 * np.cos(theta - theta0))
+            + 4.0 * np.exp(3.0 * np.cos(theta - (theta0 + np.pi)))
+            + 1.0
+        )
+        pref = tuning_curve_interpolation(
+            resp, oris, model="von_mises_direction"
+        )
+        # Allow circular error up to 30° (one sampling step), checking
+        # both directly and via wraparound.
+        circ_err = min(abs(pref - 350.0), abs(pref - 350.0 + 360.0), abs(pref + 10.0))
+        assert circ_err < 30.0, (
+            f"Expected direction near 350°, got {pref:.1f}° — interpolation "
+            "must sample the full 0–360° period, not just the observed range."
+        )
+
 
 # ======================================================================
 # Tests: goodness of fit

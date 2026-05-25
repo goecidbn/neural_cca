@@ -352,6 +352,14 @@ def tuning_curve_interpolation(
 ) -> float:
     """Preferred angle from the peak of a fitted tuning curve.
 
+    The fitted model is sampled across one *full* period (180° for
+    orientation, 360° for direction / double-Gaussian) before taking
+    the argmax.  Sampling only across the observed angle range would
+    miss the true peak whenever the preferred angle sits across the
+    wraparound — e.g. a direction-tuned cell with peak at 350° on data
+    sampled at ``[0, 30, ..., 330]`` would erroneously return an angle
+    inside ``[0, 330]``.
+
     Args:
         responses: Mean firing rates at each angle.
         angles_deg: Stimulus angles in degrees.
@@ -359,7 +367,9 @@ def tuning_curve_interpolation(
             ``"von_mises_direction"``, or ``"double_gaussian"``.
 
     Returns:
-        Preferred angle in degrees, or ``np.nan`` on failure.
+        Preferred angle in degrees, or ``np.nan`` on failure.  The
+        result lies in ``[0, 180)`` for orientation models and in
+        ``[0, 360)`` for direction / double-Gaussian models.
     """
     angles_deg = np.asarray(angles_deg, dtype=np.float64)
 
@@ -372,7 +382,8 @@ def tuning_curve_interpolation(
         )
         if np.all(np.isnan(fitted)):
             return np.nan
-        theta_fine = np.linspace(angles_deg.min(), angles_deg.max(), 3600)
+        # Orientation model has period 180° on the angle axis.
+        theta_fine = np.linspace(0.0, 180.0, 3600, endpoint=False)
         fine_fit = _vm_orientation_model(
             np.deg2rad(theta_fine),
             result["baseline"],
@@ -389,7 +400,8 @@ def tuning_curve_interpolation(
         )
         if np.all(np.isnan(fitted)):
             return np.nan
-        theta_fine = np.linspace(angles_deg.min(), angles_deg.max(), 3600)
+        # Direction model has period 360°.
+        theta_fine = np.linspace(0.0, 360.0, 3600, endpoint=False)
         fine_fit = _vm_direction_model(
             np.deg2rad(theta_fine),
             result["amplitude_pref"],
@@ -406,7 +418,8 @@ def tuning_curve_interpolation(
         )
         if np.all(np.isnan(fitted)):
             return np.nan
-        theta_fine = np.linspace(angles_deg.min(), angles_deg.max(), 3600)
+        # Double-Gaussian has two bumps at θ₀ and θ₀+π — period 360°.
+        theta_fine = np.linspace(0.0, 360.0, 3600, endpoint=False)
         fine_fit = _double_gaussian_model(
             np.deg2rad(theta_fine),
             result["amp1"],

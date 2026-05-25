@@ -135,6 +135,26 @@ def _build_trial_filter(
     angles = np.asarray(angles, dtype=np.float64)
     s_on, s_off = stim_window
 
+    # Enforce the trial-index contract.  ``angles[k]`` is taken to be
+    # the stimulus angle of trial ``k``, so every value in ``trials``
+    # must be a valid index into ``angles``.  Without this check, a
+    # user that hands in ``trials = [10, 11, 12]`` with a 3-element
+    # ``angles`` array gets silently wrong per-trial firing rates
+    # because the builder iterates ``range(len(angles))`` and never
+    # sees the supplied trial IDs.
+    n_trials = int(angles.shape[0])
+    if trials.size > 0:
+        t_min = int(trials.min())
+        t_max = int(trials.max())
+        if t_min < 0 or t_max >= n_trials:
+            raise ValueError(
+                "Trial indices must lie in [0, len(angles)); got "
+                f"min={t_min}, max={t_max}, len(angles)={n_trials}. "
+                "The package convention is that `angles[k]` is the "
+                "stimulus angle of trial `k`, so non-contiguous or "
+                "out-of-range trial IDs are not supported."
+            )
+
     # Apply cluster filter once.  After this point, every spike in
     # spike_times / trials belongs to the requested cluster (or all
     # clusters if no filter was given).
@@ -151,7 +171,6 @@ def _build_trial_filter(
     windowed_st = spike_times[in_window]
     windowed_tr = trials[in_window]
 
-    n_trials = int(angles.shape[0])
     spike_times_by_trial: dict[int, npt.NDArray[np.float64]] = {
         t: windowed_st[windowed_tr == t] for t in range(n_trials)
     }

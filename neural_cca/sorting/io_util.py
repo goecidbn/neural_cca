@@ -286,8 +286,24 @@ def _zarr_array(
     chunks: tuple,
     **kw: Any,
 ) -> Any:
-    """Create a zarr array, compatible with both zarr v2 and v3."""
+    """Create a zarr array, compatible with both zarr v2 and v3.
+
+    Zarr v3 renamed the per-array compressor argument from
+    ``compressor`` (singular, one codec) to ``compressors`` (plural,
+    sequence of codecs).  The public ``compressor=`` argument on
+    :func:`to_zarr_flat` / :func:`to_zarr_clustered` is translated
+    here so existing callers continue to work against either zarr
+    major version.  When ``compressor`` is ``None`` (the common case)
+    no kwarg is forwarded and the zarr default is used.
+    """
     if _ZARR_MAJOR >= 3:
+        if "compressor" in kw:
+            comp = kw.pop("compressor")
+            # Drop the kwarg entirely when ``None`` so zarr v3 picks
+            # its default codec list; wrap a single codec in a tuple
+            # for the new ``compressors`` parameter.
+            if comp is not None:
+                kw["compressors"] = (comp,)
         return parent.create_array(
             name,
             data=data,

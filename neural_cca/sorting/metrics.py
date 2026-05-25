@@ -590,8 +590,7 @@ def peak_amplitude_snr(
     Returns:
         SNR (float) or ``{cluster_id: float}`` dict.
     """
-    if not all_clusters and cluster_id is None:
-        raise ValueError("Must specify 'cluster_id' when 'all_clusters' is False.")
+    _validate_cluster_args(all_clusters, cluster_id)
 
     baseline_n = max(1, int(waveforms.shape[1] * baseline_frac))
 
@@ -650,8 +649,7 @@ def waveform_stability(
         Pearson *r* (float, 0–1).  1.0 = perfect stability.
         ``np.nan`` if insufficient spikes in any window.
     """
-    if not all_clusters and cluster_id is None:
-        raise ValueError("Must specify 'cluster_id' when 'all_clusters' is False.")
+    _validate_cluster_args(all_clusters, cluster_id)
 
     def _stab_one(times: npt.NDArray, waves: npt.NDArray) -> float:
         if len(times) < 4:
@@ -720,8 +718,7 @@ def amplitude_drift(
         Spearman *r* (float, −1 to 1) or ``{cluster_id: float}`` dict.
         ``np.nan`` if fewer than 3 spikes.
     """
-    if not all_clusters and cluster_id is None:
-        raise ValueError("Must specify 'cluster_id' when 'all_clusters' is False.")
+    _validate_cluster_args(all_clusters, cluster_id)
 
     def _drift_one(w: npt.NDArray) -> float:
         if len(w) < 3:
@@ -781,8 +778,7 @@ def fraction_missing(
         Fraction missing (float, 0–1) or ``{cluster_id: float}`` dict.
         ``np.nan`` if fewer than 10 spikes.
     """
-    if not all_clusters and cluster_id is None:
-        raise ValueError("Must specify 'cluster_id' when 'all_clusters' is False.")
+    _validate_cluster_args(all_clusters, cluster_id)
 
     def _frac_one(w: npt.NDArray, label: object | None = None) -> float:
         if len(w) < 10:

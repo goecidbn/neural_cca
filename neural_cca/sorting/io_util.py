@@ -62,6 +62,7 @@ __all__ = [
 # Quality-metric schema
 # ---------------------------------------------------------------------------
 
+
 class QualityMetricKind(Enum):
     """Schema kind for an entry in the ``quality`` dict.
 
@@ -131,8 +132,7 @@ def _infer_quality_metric_kind(value: Any) -> QualityMetricKind:
     ``UserWarning`` is emitted at the call site so that missing
     registry entries are visible at write time, not at read time.
     """
-    if isinstance(value, (bool, int, float, np.integer, np.floating)) \
-            or value is None:
+    if isinstance(value, (bool, int, float, np.integer, np.floating)) or value is None:
         return QualityMetricKind.SCALAR
     if isinstance(value, dict):
         if not value:
@@ -231,6 +231,7 @@ def _require_zarr() -> ModuleType:
 # JSON-safe conversion
 # ---------------------------------------------------------------------------
 
+
 def _make_json_safe(obj: Any) -> Any:
     """Recursively convert numpy scalars / arrays to JSON-safe types."""
     if isinstance(obj, (np.integer,)):
@@ -257,6 +258,7 @@ def _make_json_safe(obj: Any) -> Any:
 # Chunk helpers
 # ---------------------------------------------------------------------------
 
+
 def _chunks_1d(n: int, target: int = 65_536) -> tuple[int]:
     return (min(n, target),)
 
@@ -266,7 +268,8 @@ def _chunks_2d(shape: tuple[int, int], target_rows: int = 4096) -> tuple[int, in
 
 
 def _chunks_3d(
-    shape: tuple[int, int, int], target_rows: int = 4096,
+    shape: tuple[int, int, int],
+    target_rows: int = 4096,
 ) -> tuple[int, int, int]:
     return (1, min(shape[1], target_rows), shape[2])
 
@@ -274,6 +277,7 @@ def _chunks_3d(
 # ---------------------------------------------------------------------------
 # Zarr v2 / v3 compatibility
 # ---------------------------------------------------------------------------
+
 
 def _zarr_array(
     parent: Any,
@@ -285,10 +289,16 @@ def _zarr_array(
     """Create a zarr array, compatible with both zarr v2 and v3."""
     if _ZARR_MAJOR >= 3:
         return parent.create_array(
-            name, data=data, chunks=chunks, **kw,
+            name,
+            data=data,
+            chunks=chunks,
+            **kw,
         )
     return parent.create_dataset(
-        name, data=data, chunks=chunks, **kw,
+        name,
+        data=data,
+        chunks=chunks,
+        **kw,
     )
 
 
@@ -328,6 +338,7 @@ def _iter_array_names(group: Any) -> list[str]:
 # Write helpers — metadata
 # ---------------------------------------------------------------------------
 
+
 def _write_root_attrs(
     root: Any,
     result: Any,
@@ -342,9 +353,7 @@ def _write_root_attrs(
     root.attrs["n_trials"] = int(data.n_trials)
     root.attrs["stim_window"] = [float(data.stim_window[0]), float(data.stim_window[1])]
     root.attrs["stim_frequency"] = (
-        float(data.stim_frequency)
-        if data.stim_frequency is not None
-        else None
+        float(data.stim_frequency) if data.stim_frequency is not None else None
     )
     root.attrs["sorting_metadata"] = _make_json_safe(result.metadata)
     root.attrs["data_metadata"] = _make_json_safe(data.metadata)
@@ -353,6 +362,7 @@ def _write_root_attrs(
 # ---------------------------------------------------------------------------
 # Write helpers — quality
 # ---------------------------------------------------------------------------
+
 
 def _resolve_metric_kind(key: str, val: Any) -> QualityMetricKind:
     """Look up *key* in the registry, falling back to inference + warning."""
@@ -470,9 +480,7 @@ def _read_quality_group(qg: Any) -> dict:
                 if name == "cluster_ids":
                     continue
                 arr = _read_array(qg, name)
-                quality[name] = {
-                    int(cids[i]): float(arr[i]) for i in range(len(cids))
-                }
+                quality[name] = {int(cids[i]): float(arr[i]) for i in range(len(cids))}
         return quality
 
     # Schema-aware path.
@@ -489,25 +497,20 @@ def _read_quality_group(qg: Any) -> dict:
         elif kind is QualityMetricKind.PER_CLUSTER_FLOAT:
             if cids is None:
                 raise ValueError(
-                    f"Quality store missing 'cluster_ids' for "
-                    f"per-cluster metric {key!r}."
+                    f"Quality store missing 'cluster_ids' for per-cluster metric {key!r}."
                 )
             arr = _read_array(qg, key)
-            quality[key] = {
-                int(cids[i]): float(arr[i]) for i in range(len(cids))
-            }
+            quality[key] = {int(cids[i]): float(arr[i]) for i in range(len(cids))}
 
         elif kind is QualityMetricKind.PER_CLUSTER_ARRAY:
             if cids is None:
                 raise ValueError(
-                    f"Quality store missing 'cluster_ids' for "
-                    f"per-cluster metric {key!r}."
+                    f"Quality store missing 'cluster_ids' for per-cluster metric {key!r}."
                 )
             padded = _read_array(qg, key)
             lens = array_lengths.get(key, [padded.shape[1]] * len(cids))
             quality[key] = {
-                int(cids[i]): np.asarray(padded[i, : int(lens[i])])
-                for i in range(len(cids))
+                int(cids[i]): np.asarray(padded[i, : int(lens[i])]) for i in range(len(cids))
             }
 
         elif kind is QualityMetricKind.NESTED_DICT:
@@ -520,8 +523,7 @@ def _read_quality_group(qg: Any) -> dict:
                 # when they parse cleanly so the structure mirrors what
                 # ``evaluate_sorting`` originally produced.
                 quality[key] = {
-                    (int(k) if k.lstrip("-").isdigit() else k): v
-                    for k, v in decoded.items()
+                    (int(k) if k.lstrip("-").isdigit() else k): v for k, v in decoded.items()
                 }
 
         else:  # pragma: no cover - exhaustiveness guard
@@ -533,6 +535,7 @@ def _read_quality_group(qg: Any) -> dict:
 # ---------------------------------------------------------------------------
 # Write helpers — os_metrics
 # ---------------------------------------------------------------------------
+
 
 def _write_os_metrics_group(
     parent: Any,
@@ -557,9 +560,7 @@ def _write_os_metrics_group(
     for key in sorted(all_keys):
         values = [os_metrics[cid].get(key) for cid in cluster_ids]
         if all(isinstance(v, (int, float, np.integer, np.floating, type(None))) for v in values):
-            scalar_metrics[key] = [
-                float(v) if v is not None else np.nan for v in values
-            ]
+            scalar_metrics[key] = [float(v) if v is not None else np.nan for v in values]
         else:
             for cid, v in zip(cluster_ids, values):
                 non_scalar.setdefault(str(cid), {})[key] = _make_json_safe(v)
@@ -601,6 +602,7 @@ def _read_os_metrics_group(og: Any) -> dict[int, dict]:
 # Write helpers — k_search
 # ---------------------------------------------------------------------------
 
+
 def _write_k_search_group(
     parent: Any,
     k_search: dict[int, float],
@@ -624,6 +626,7 @@ def _read_k_search_group(kg: Any) -> dict[int, float]:
 # ===================================================================
 # Public zarr API
 # ===================================================================
+
 
 def to_zarr_flat(
     result: Any,
@@ -661,17 +664,27 @@ def to_zarr_flat(
     n = data.n_spikes
 
     _zarr_array(
-        root, "cluster_labels", result.cluster_labels, _chunks_1d(n), **kw,
+        root,
+        "cluster_labels",
+        result.cluster_labels,
+        _chunks_1d(n),
+        **kw,
     )
     _zarr_array(root, "spike_times", data.spike_times, _chunks_1d(n), **kw)
     _zarr_array(
-        root, "waveforms", data.waveforms,
-        _chunks_2d(data.waveforms.shape), **kw,
+        root,
+        "waveforms",
+        data.waveforms,
+        _chunks_2d(data.waveforms.shape),
+        **kw,
     )
     _zarr_array(root, "trials", data.trials, _chunks_1d(n), **kw)
     _zarr_array(
-        root, "angles", data.angles,
-        _chunks_1d(len(data.angles)), **kw,
+        root,
+        "angles",
+        data.angles,
+        _chunks_1d(len(data.angles)),
+        **kw,
     )
 
     _write_quality_group(root, result.quality, compressor)
@@ -749,10 +762,14 @@ def to_zarr_clustered(
     # --- Build padded arrays ---
     st_pad = np.full((n_clusters, max_spk), np.nan, dtype=np.float64)
     wv_pad = np.full(
-        (n_clusters, max_spk, snip), np.nan, dtype=np.float64,
+        (n_clusters, max_spk, snip),
+        np.nan,
+        dtype=np.float64,
     )
     tr_pad = np.full(
-        (n_clusters, max_spk), fill_value_int, dtype=np.int64,
+        (n_clusters, max_spk),
+        fill_value_int,
+        dtype=np.int64,
     )
     # Original (chronological) row index of each spike in the flat
     # input arrays.  Storing this lets the reader undo the cluster
@@ -761,7 +778,9 @@ def to_zarr_clustered(
     # with another array (e.g. an external annotation column).  Without
     # it, the clustered → flat round-trip is order-changing.
     orig_idx_pad = np.full(
-        (n_clusters, max_spk), fill_value_int, dtype=np.int64,
+        (n_clusters, max_spk),
+        fill_value_int,
+        dtype=np.int64,
     )
 
     for i, cid in enumerate(cluster_ids):
@@ -774,33 +793,54 @@ def to_zarr_clustered(
 
     # --- Write arrays ---
     _zarr_array(
-        root, "cluster_labels", result.cluster_labels,
-        _chunks_1d(len(result.cluster_labels)), **kw,
+        root,
+        "cluster_labels",
+        result.cluster_labels,
+        _chunks_1d(len(result.cluster_labels)),
+        **kw,
     )
     _zarr_array(
-        root, "cluster_ids", cluster_ids.astype(np.int64),
-        _chunks_1d(n_clusters), **kw,
+        root,
+        "cluster_ids",
+        cluster_ids.astype(np.int64),
+        _chunks_1d(n_clusters),
+        **kw,
     )
     _zarr_array(root, "spike_count", counts, _chunks_1d(n_clusters), **kw)
     _zarr_array(
-        root, "spike_times", st_pad,
-        (1, min(max_spk, 65_536)), **kw,
+        root,
+        "spike_times",
+        st_pad,
+        (1, min(max_spk, 65_536)),
+        **kw,
     )
     _zarr_array(
-        root, "waveforms", wv_pad,
-        _chunks_3d(wv_pad.shape), **kw,
+        root,
+        "waveforms",
+        wv_pad,
+        _chunks_3d(wv_pad.shape),
+        **kw,
     )
     _zarr_array(
-        root, "trials", tr_pad,
-        (1, min(max_spk, 65_536)), **kw,
+        root,
+        "trials",
+        tr_pad,
+        (1, min(max_spk, 65_536)),
+        **kw,
     )
     _zarr_array(
-        root, "original_index", orig_idx_pad,
-        (1, min(max_spk, 65_536)), **kw,
+        root,
+        "original_index",
+        orig_idx_pad,
+        (1, min(max_spk, 65_536)),
+        **kw,
     )
     _zarr_array(
-        root, "angles", data.angles,
-        _chunks_1d(len(data.angles)), **kw,
+        root,
+        "angles",
+        data.angles,
+        _chunks_1d(len(data.angles)),
+        **kw,
     )
 
     _write_quality_group(root, result.quality, compressor)
@@ -839,16 +879,8 @@ def read_zarr_sorting(
 
     # --- Read quality / os_metrics / k_search ---
     quality = _read_quality_group(root["quality"]) if "quality" in root else {}
-    os_metrics = (
-        _read_os_metrics_group(root["os_metrics"])
-        if "os_metrics" in root
-        else None
-    )
-    k_search = (
-        _read_k_search_group(root["k_search"])
-        if "k_search" in root
-        else None
-    )
+    os_metrics = _read_os_metrics_group(root["os_metrics"]) if "os_metrics" in root else None
+    k_search = _read_k_search_group(root["k_search"]) if "k_search" in root else None
 
     angles = _read_array(root, "angles")
 
@@ -904,9 +936,7 @@ def read_zarr_sorting(
             cluster_labels = cluster_labels[order]
 
     else:
-        raise ValueError(
-            f"Unrecognised export_mode in zarr store: {export_mode!r}"
-        )
+        raise ValueError(f"Unrecognised export_mode in zarr store: {export_mode!r}")
 
     # --- Reconstruct SortingData ---
     sw = attrs["stim_window"]
@@ -919,9 +949,7 @@ def read_zarr_sorting(
         n_trials=int(attrs["n_trials"]),
         stim_window=(float(sw[0]), float(sw[1])),
         stim_frequency=(
-            float(attrs["stim_frequency"])
-            if attrs.get("stim_frequency") is not None
-            else None
+            float(attrs["stim_frequency"]) if attrs.get("stim_frequency") is not None else None
         ),
         metadata=attrs.get("data_metadata", {}),
     )

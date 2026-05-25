@@ -95,8 +95,7 @@ class SortingData:
             )
         if len(self.trials) != n:
             raise ValueError(
-                f"waveforms ({n}) and trials ({len(self.trials)}) "
-                "must have the same length."
+                f"waveforms ({n}) and trials ({len(self.trials)}) must have the same length."
             )
         if self.n_trials is None:
             self.n_trials = int(len(self.angles))

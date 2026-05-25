@@ -18,7 +18,7 @@ from neural_cca.sorting.metrics import (
 
 # Shared helpers from conftest.py (plain functions, not fixtures, so
 # the existing call sites ``_two_clusters(sep=10.0)`` keep working).
-from tests.conftest import make_two_clusters, make_overlapping_clusters, make_waveforms
+from tests.conftest import make_overlapping_clusters, make_two_clusters, make_waveforms
 
 
 def _two_clusters(n=200, sep=5.0, dim=10, rng_seed=894131):
@@ -40,6 +40,7 @@ def _make_waveforms(n=300, snippet_len=38, rng_seed=42):
 # ---------------------------------------------------------------------------
 # Isolation distance
 # ---------------------------------------------------------------------------
+
 
 class TestIsolationDistance:
     def test_well_separated_high(self):
@@ -72,6 +73,7 @@ class TestIsolationDistance:
 # L-ratio
 # ---------------------------------------------------------------------------
 
+
 class TestLRatio:
     def test_well_separated_low(self):
         X, lab = _two_clusters(sep=10.0)
@@ -90,6 +92,7 @@ class TestLRatio:
 # ---------------------------------------------------------------------------
 # d-prime
 # ---------------------------------------------------------------------------
+
 
 class TestDPrime:
     def test_scales_with_separation(self):
@@ -208,6 +211,7 @@ class TestDPrime:
         from neural_cca.sorting.plotting import (
             d_prime_pairwise_matrix as _from_plot,
         )
+
         X, lab = _two_clusters(sep=3.0, n=500, dim=8)
         mat_metric, _ = d_prime_pairwise_matrix(X, lab)
         mat_plot, _ = _from_plot(X, lab)
@@ -217,6 +221,7 @@ class TestDPrime:
 # ---------------------------------------------------------------------------
 # Peak amplitude SNR
 # ---------------------------------------------------------------------------
+
 
 class TestPeakAmplitudeSNR:
     def test_clean_signal_high_snr(self):
@@ -235,6 +240,7 @@ class TestPeakAmplitudeSNR:
 # ---------------------------------------------------------------------------
 # Waveform stability
 # ---------------------------------------------------------------------------
+
 
 class TestWaveformStability:
     def test_stable_waveforms_high_r(self):
@@ -269,6 +275,7 @@ class TestWaveformStability:
 # Amplitude drift
 # ---------------------------------------------------------------------------
 
+
 class TestAmplitudeDrift:
     def test_no_drift_near_zero(self):
         wv, lab, _, _ = _make_waveforms()
@@ -291,6 +298,7 @@ class TestAmplitudeDrift:
 # ---------------------------------------------------------------------------
 # Fraction missing
 # ---------------------------------------------------------------------------
+
 
 class TestFractionMissing:
     def test_well_detected_low_fraction(self):

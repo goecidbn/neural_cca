@@ -6,15 +6,15 @@ for tuning analysis metrics.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import numpy.typing as npt
 from scipy.stats import f_oneway
 
-from ._filter import _TrialFilteredSpikes, _build_trial_filter
-from .selectivity import dosi_circular_normalised, _rayleigh_test
 from .._utils import make_rng
+from ._filter import _build_trial_filter, _TrialFilteredSpikes
+from .selectivity import _rayleigh_test, dosi_circular_normalised
 
 __all__ = [
     "orientation_selectivity_significance",
@@ -132,7 +132,9 @@ def anova_across_orientations(
     """
     if _filter is None:
         _filter = _build_trial_filter(
-            spike_times, trials, angles,
+            spike_times,
+            trials,
+            angles,
             stim_window=stim_window,
             cluster_labels=cluster_labels,
             cluster_id=cluster_id,

@@ -9,15 +9,15 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from neural_cca.tuning.selectivity import (
-    dosi_circular_normalised,
-    circular_variance,
-    gosi,
-    gdsi,
-)
 from neural_cca.tuning.modulation import (
-    modulation_ratio_per_orientation,
     cross_orientation_suppression,
+    modulation_ratio_per_orientation,
+)
+from neural_cca.tuning.selectivity import (
+    circular_variance,
+    dosi_circular_normalised,
+    gdsi,
+    gosi,
 )
 from neural_cca.tuning.temporal import (
     f1_phase,
@@ -25,19 +25,17 @@ from neural_cca.tuning.temporal import (
 )
 
 # Shared helper from conftest.py
-from tests.conftest import make_tuned_spikes as _make_tuned_spikes
-
 
 # ======================================================================
 # Tests: gOSI / gDSI
 # ======================================================================
 
-class TestGOSI:
 
+class TestGOSI:
     def test_tuned_neuron_high_gosi(self):
         """Sharply tuned neuron → gOSI > 0.2."""
         angles = np.linspace(0, 360, 12, endpoint=False)
-        resp = 2.0 + 20.0 * np.exp(-((angles - 90) ** 2) / (2 * 25 ** 2))
+        resp = 2.0 + 20.0 * np.exp(-((angles - 90) ** 2) / (2 * 25**2))
         g = gosi(resp, angles)
         assert g > 0.2, f"Expected gOSI > 0.2, got {g:.3f}"
 
@@ -60,17 +58,16 @@ class TestGOSI:
     def test_tuned_p_value_significant(self):
         """Strongly tuned → p < 0.05."""
         angles = np.linspace(0, 360, 12, endpoint=False)
-        resp = 1.0 + 30.0 * np.exp(-((angles - 90) ** 2) / (2 * 20 ** 2))
+        resp = 1.0 + 30.0 * np.exp(-((angles - 90) ** 2) / (2 * 20**2))
         result = dosi_circular_normalised(resp, angles, p_value=True)
         assert result["p_value"] < 0.05
 
 
 class TestGDSI:
-
     def test_direction_selective_high_gdsi(self):
         """Strong direction selectivity → gDSI > 0.3."""
         angles = np.linspace(0, 360, 12, endpoint=False)
-        resp = 2.0 + 20.0 * np.exp(-((angles - 45) ** 2) / (2 * 25 ** 2))
+        resp = 2.0 + 20.0 * np.exp(-((angles - 45) ** 2) / (2 * 25**2))
         g = gdsi(resp, angles)
         assert g > 0.3, f"Expected gDSI > 0.3, got {g:.3f}"
 
@@ -84,7 +81,6 @@ class TestGDSI:
 
 
 class TestCircularVariancePValue:
-
     def test_returns_dict_with_p(self):
         """p_value=True returns dict."""
         angles = np.linspace(0, 360, 8, endpoint=False)
@@ -99,8 +95,8 @@ class TestCircularVariancePValue:
 # Tests: Modulation
 # ======================================================================
 
-class TestModulationRatio:
 
+class TestModulationRatio:
     def test_simple_cell_high_f1f0(self):
         """Simple cell with sinusoidal modulation → F1/F0 > 1 at preferred."""
         rng = np.random.default_rng(99)
@@ -113,7 +109,7 @@ class TestModulationRatio:
         for t_idx in range(len(angles)):
             ang = angles[t_idx]
             d = min(abs(ang - 90), 360 - abs(ang - 90))
-            rate = 2.0 + 20.0 * np.exp(-(d ** 2) / (2 * 30 ** 2))
+            rate = 2.0 + 20.0 * np.exp(-(d**2) / (2 * 30**2))
             # Sinusoidal modulation at 2 Hz
             t_arr = np.arange(0.5, 2.5, 0.001)
             inst_rate = rate * (1 + 0.9 * np.sin(2 * np.pi * 2.0 * t_arr))
@@ -127,19 +123,21 @@ class TestModulationRatio:
         trials = np.concatenate(all_tr)
 
         result = modulation_ratio_per_orientation(
-            spike_times, trials, angles,
-            stim_frequency=2.0, stim_window=(0.5, 2.5),
+            spike_times,
+            trials,
+            angles,
+            stim_frequency=2.0,
+            stim_window=(0.5, 2.5),
         )
         assert isinstance(result, dict)
         assert len(result) == n_angles
 
 
 class TestCrossOrientationSuppression:
-
     def test_tuned_neuron_cos(self):
         """Tuned neuron → COS > 0."""
         angles = np.linspace(0, 360, 12, endpoint=False)
-        resp = 2.0 + 20.0 * np.exp(-((angles - 90) ** 2) / (2 * 25 ** 2))
+        resp = 2.0 + 20.0 * np.exp(-((angles - 90) ** 2) / (2 * 25**2))
         cos = cross_orientation_suppression(resp, angles)
         assert cos > 0, f"Expected COS > 0, got {cos:.3f}"
 
@@ -155,8 +153,8 @@ class TestCrossOrientationSuppression:
 # Tests: Temporal
 # ======================================================================
 
-class TestF1Phase:
 
+class TestF1Phase:
     def test_known_phase(self):
         """Pure sinusoid with known phase → correct recovery."""
         fs = 100.0
@@ -176,16 +174,12 @@ class TestF1Phase:
         """Multi-trial array: returns array of phases."""
         fs = 100.0
         t = np.arange(0, 2.0, 1.0 / fs)
-        psth = np.vstack([
-            10 + 5 * np.sin(2 * np.pi * 2.0 * t + i * 0.5)
-            for i in range(5)
-        ])
+        psth = np.vstack([10 + 5 * np.sin(2 * np.pi * 2.0 * t + i * 0.5) for i in range(5)])
         phases = f1_phase(psth, fs, 2.0)
         assert phases.shape == (5,)
 
 
 class TestTemporalFrequencyTuning:
-
     def test_peak_at_known_tf(self):
         """Preferred TF should be near true peak."""
         rng = np.random.default_rng(123)
@@ -208,7 +202,9 @@ class TestTemporalFrequencyTuning:
         trials = np.concatenate(all_tr)
 
         result = temporal_frequency_tuning(
-            spike_times, trials, temporal_freqs,
+            spike_times,
+            trials,
+            temporal_freqs,
             response_metric="mfr",
             stim_window=(0.5, 2.5),
         )

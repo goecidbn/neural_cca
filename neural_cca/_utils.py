@@ -47,6 +47,7 @@ __all__ = [
 # RNG factory
 # ---------------------------------------------------------------------------
 
+
 def make_rng(
     seed: np.random.Generator | int | None = None,
 ) -> np.random.Generator:
@@ -76,7 +77,8 @@ def make_rng(
     """
     if isinstance(seed, np.random.Generator):
         return seed
-    from numpy.random import Generator, PCG64DXSM, SeedSequence
+    from numpy.random import PCG64DXSM, Generator, SeedSequence
+
     ss = SeedSequence(seed) if seed is not None else SeedSequence()
     return Generator(PCG64DXSM(ss))
 
@@ -84,6 +86,7 @@ def make_rng(
 # ---------------------------------------------------------------------------
 # General-purpose helpers
 # ---------------------------------------------------------------------------
+
 
 def guarded_divide(
     x: npt.ArrayLike,
@@ -135,6 +138,7 @@ def steps2degree(n_steps: int) -> dict[int, float]:
 # ---------------------------------------------------------------------------
 # Circular statistics (all angles in degrees)
 # ---------------------------------------------------------------------------
+
 
 def wrap360(angle_deg: npt.ArrayLike) -> np.ndarray | float:
     """Fold an angle (or array of angles) into ``[0, 360)``.
@@ -206,9 +210,7 @@ def circ_dist(
         Distance value(s).  Scalar inputs → ``float``; array inputs →
         ``np.ndarray``.
     """
-    diff = (
-        np.asarray(a, dtype=np.float64) - np.asarray(b, dtype=np.float64)
-    ) % period
+    diff = (np.asarray(a, dtype=np.float64) - np.asarray(b, dtype=np.float64)) % period
     result = np.minimum(diff, period - diff)
     if result.ndim == 0:
         return float(result)

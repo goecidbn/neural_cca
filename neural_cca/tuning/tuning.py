@@ -14,17 +14,21 @@ import numpy.typing as npt
 from scipy.fft import fft, fftfreq
 from scipy.optimize import curve_fit
 
+from .._utils import circ_dist, circ_mean, guarded_divide, make_rng
 from ._filter import _build_trial_filter
-from .selectivity import dosi_circular_normalised, circular_variance, gosi, gdsi
 from .fitting import (
-    von_mises_fit as _vm_fit,
     double_gaussian_fit as _dg_fit,
 )
+from .fitting import (
+    von_mises_fit as _vm_fit,
+)
+from .selectivity import circular_variance, dosi_circular_normalised, gdsi, gosi
 from .statistics import (
     anova_across_orientations as _anova,
+)
+from .statistics import (
     bootstrap_ci_strata as _boot_strata,
 )
-from .._utils import circ_dist, circ_mean, guarded_divide, make_rng
 
 __all__ = [
     "tuning_bandwidth",
@@ -105,14 +109,16 @@ class OsMetricsResult(TypedDict, total=False):
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _gauss(x: npt.ArrayLike, a: float, x0: float, sigma: float, b: float) -> np.ndarray:
     """Gaussian with baseline: a * exp(-(x-x0)^2 / (2*sigma^2)) + b."""
-    return a * np.exp(-((x - x0) ** 2) / (2 * sigma ** 2)) + b
+    return a * np.exp(-((x - x0) ** 2) / (2 * sigma**2)) + b
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def tuning_bandwidth(
     responses: npt.NDArray[np.float64],
@@ -140,9 +146,7 @@ def tuning_bandwidth(
     sigma0 = 20.0
     b0 = np.min(responses)
     try:
-        popt, _ = curve_fit(
-            _gauss, orientations, responses, p0=[a0, x0, sigma0, b0]
-        )
+        popt, _ = curve_fit(_gauss, orientations, responses, p0=[a0, x0, sigma0, b0])
     except RuntimeError:
         return np.inf
     sigma = abs(popt[2])
@@ -271,13 +275,9 @@ def get_os_metrics(
             when ``all_clusters=False``.
     """
     if not all_clusters and cluster_id is None:
-        raise ValueError(
-            "cluster_id must be specified when all_clusters is False."
-        )
+        raise ValueError("cluster_id must be specified when all_clusters is False.")
     if not all_clusters and cluster_labels is None:
-        raise ValueError(
-            "cluster_labels must be provided when all_clusters is False."
-        )
+        raise ValueError("cluster_labels must be provided when all_clusters is False.")
 
     s_on, s_end = stim_window
 
@@ -288,7 +288,9 @@ def get_os_metrics(
     # The private ``_filter=`` keyword on each helper short-circuits
     # the rebuild path.
     trial_filter = _build_trial_filter(
-        spike_times, trials, angles,
+        spike_times,
+        trials,
+        angles,
         stim_window=stim_window,
         cluster_labels=cluster_labels if not all_clusters else None,
         cluster_id=cluster_id if not all_clusters else None,
@@ -313,7 +315,9 @@ def get_os_metrics(
         "tuning_bandwidth": tuning_bandwidth(mfrs, angles),
         "preferred_orientation": pref_ori,
         "preferred_direction": preferred_dori(
-            mfrs, angles, direction_selectivity=True,
+            mfrs,
+            angles,
+            direction_selectivity=True,
         ),
         "closest_orientation": float(angles[closest_idx]),
     }
@@ -330,8 +334,7 @@ def get_os_metrics(
     # silently skipped all the post-harmonic blocks.)
     if stim_frequency is None:
         if return_verbose >= 1:
-            for k in ("f0_mean", "f1_mean", "f2_mean",
-                      "f1_f0_mean", "f2_f0_mean", "f2_f1_mean"):
+            for k in ("f0_mean", "f1_mean", "f2_mean", "f1_f0_mean", "f2_f0_mean", "f2_f1_mean"):
                 _r[k] = np.nan
     else:
         psth_fs = 1.0 / bin_size
@@ -348,30 +351,32 @@ def get_os_metrics(
                 counts, _ = np.histogram(spikes, bins=bins)
                 psth_by_trial[trial_idx] = counts / bin_size
 
-        _F0, _F1, _F2 = compute_f0_f1_f2(
-            list(psth_by_trial.values()), psth_fs, stim_frequency
-        )
+        _F0, _F1, _F2 = compute_f0_f1_f2(list(psth_by_trial.values()), psth_fs, stim_frequency)
 
         if return_verbose >= 1:
-            _r.update({
-                "f0_mean": float(_F0.mean()),
-                "f1_mean": float(_F1.mean()),
-                "f2_mean": float(_F2.mean()),
-                "f1_f0_mean": guarded_divide(_F1.mean(), _F0.mean()),
-                "f2_f0_mean": guarded_divide(_F2.mean(), _F0.mean()),
-                "f2_f1_mean": guarded_divide(_F2.mean(), _F1.mean()),
-            })
+            _r.update(
+                {
+                    "f0_mean": float(_F0.mean()),
+                    "f1_mean": float(_F1.mean()),
+                    "f2_mean": float(_F2.mean()),
+                    "f1_f0_mean": guarded_divide(_F1.mean(), _F0.mean()),
+                    "f2_f0_mean": guarded_divide(_F2.mean(), _F0.mean()),
+                    "f2_f1_mean": guarded_divide(_F2.mean(), _F1.mean()),
+                }
+            )
 
         if return_verbose == 2:
-            _r.update({
-                "psth_by_trial": psth_by_trial,
-                "f0": _F0,
-                "f1": _F1,
-                "f2": _F2,
-                "f1_f0": guarded_divide(_F1, _F0),
-                "f2_f0": guarded_divide(_F2, _F0),
-                "f2_f1": guarded_divide(_F2, _F1),
-            })
+            _r.update(
+                {
+                    "psth_by_trial": psth_by_trial,
+                    "f0": _F0,
+                    "f1": _F1,
+                    "f2": _F2,
+                    "f1_f0": guarded_divide(_F1, _F0),
+                    "f2_f0": guarded_divide(_F2, _F0),
+                    "f2_f1": guarded_divide(_F2, _F1),
+                }
+            )
 
     # --- v0.3.0 extensions ---
 
@@ -383,9 +388,7 @@ def get_os_metrics(
     # P-values via Rayleigh test (+ ANOVA)
     if compute_p_values:
         osi_d = dosi_circular_normalised(mfrs, angles, p_value=True)
-        dsi_d = dosi_circular_normalised(
-            mfrs, angles, direction_selectivity=True, p_value=True
-        )
+        dsi_d = dosi_circular_normalised(mfrs, angles, direction_selectivity=True, p_value=True)
         _r["osi_p_value"] = osi_d["p_value"]
         _r["dsi_p_value"] = dsi_d["p_value"]
         if compute_gosi:
@@ -394,7 +397,9 @@ def get_os_metrics(
             _r["gosi_p_value"] = gosi_d["p_value"]
             _r["gdsi_p_value"] = gdsi_d["p_value"]
         anova_result = _anova(
-            spike_times, trials, angles,
+            spike_times,
+            trials,
+            angles,
             stim_window=stim_window,
             cluster_labels=cluster_labels if not all_clusters else None,
             cluster_id=cluster_id if not all_clusters else None,
@@ -420,9 +425,7 @@ def get_os_metrics(
             )
         _r["fit_model"] = fit_model
         _r["fit_r_squared"] = fit_result.get("r_squared", np.nan)
-        _r["fit_bandwidth"] = fit_result.get(
-            "bandwidth_hwhh", fit_result.get("sigma", np.nan)
-        )
+        _r["fit_bandwidth"] = fit_result.get("bandwidth_hwhh", fit_result.get("sigma", np.nan))
 
     # Bootstrap CIs — stratified by stimulus angle so each iteration
     # preserves the (rate, angle) pairing. A plain bootstrap over
@@ -444,14 +447,23 @@ def get_os_metrics(
             return dosi_circular_normalised(rates, ang, direction_selectivity=True)
 
         _r["osi_ci"] = _boot_strata(
-            mfrs, angles, _osi_func,
-            n_bootstrap=n_bootstrap, ci_level=ci_level, rng=boot_rng,
+            mfrs,
+            angles,
+            _osi_func,
+            n_bootstrap=n_bootstrap,
+            ci_level=ci_level,
+            rng=boot_rng,
         )
         _r["dsi_ci"] = _boot_strata(
-            mfrs, angles, _dsi_func,
-            n_bootstrap=n_bootstrap, ci_level=ci_level, rng=boot_rng,
+            mfrs,
+            angles,
+            _dsi_func,
+            n_bootstrap=n_bootstrap,
+            ci_level=ci_level,
+            rng=boot_rng,
         )
         if compute_gosi:
+
             def _gosi_func(rates: np.ndarray, ang: np.ndarray) -> float:
                 return gosi(rates, ang)
 
@@ -459,12 +471,20 @@ def get_os_metrics(
                 return gdsi(rates, ang)
 
             _r["gosi_ci"] = _boot_strata(
-                mfrs, angles, _gosi_func,
-                n_bootstrap=n_bootstrap, ci_level=ci_level, rng=boot_rng,
+                mfrs,
+                angles,
+                _gosi_func,
+                n_bootstrap=n_bootstrap,
+                ci_level=ci_level,
+                rng=boot_rng,
             )
             _r["gdsi_ci"] = _boot_strata(
-                mfrs, angles, _gdsi_func,
-                n_bootstrap=n_bootstrap, ci_level=ci_level, rng=boot_rng,
+                mfrs,
+                angles,
+                _gdsi_func,
+                n_bootstrap=n_bootstrap,
+                ci_level=ci_level,
+                rng=boot_rng,
             )
 
     return _r

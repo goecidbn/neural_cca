@@ -31,7 +31,7 @@ public API.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import numpy.typing as npt
@@ -127,8 +127,7 @@ def _build_trial_filter(
     """
     if (cluster_labels is None) != (cluster_id is None):
         raise ValueError(
-            "cluster_labels and cluster_id must both be provided "
-            "together, or both omitted."
+            "cluster_labels and cluster_id must both be provided together, or both omitted."
         )
 
     spike_times = np.asarray(spike_times, dtype=np.float64)

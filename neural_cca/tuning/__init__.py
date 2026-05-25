@@ -1,51 +1,51 @@
 """Orientation selectivity and tuning curve analysis."""
 
 from .._utils import circ_dist, circ_mean, steps2degree, wrap180, wrap360
-from .selectivity import dosi_circular_normalised, circular_variance, gosi, gdsi
-from .tuning import (
-    tuning_bandwidth,
-    compute_f0_f1_f2,
-    preferred_dori,
-    get_os_metrics,
-    OsMetricsResult,
-)
 from .fitting import (
-    von_mises_fit,
     double_gaussian_fit,
-    tuning_curve_interpolation,
     goodness_of_fit,
+    tuning_curve_interpolation,
+    von_mises_fit,
 )
 from .modulation import (
-    modulation_ratio_per_orientation,
     cross_orientation_suppression,
-)
-from .temporal import (
-    temporal_frequency_tuning,
-    f1_phase,
-)
-from .population import (
-    orientation_map_statistics,
-    signal_correlations,
-    noise_correlations,
-)
-from .statistics import (
-    orientation_selectivity_significance,
-    anova_across_orientations,
-    bootstrap_ci,
-    bootstrap_ci_strata,
+    modulation_ratio_per_orientation,
 )
 from .plotting import (
     orientation_scatter_vm,
-    plot_tuning_curve,
     plot_direction_polar,
-    plot_f1f0_bars,
-    plot_psth_by_orientation,
     plot_f1_phase,
-    plot_population_orientation_histogram,
-    plot_noise_correlation_matrix,
-    plot_signal_correlation_matrix,
+    plot_f1f0_bars,
     plot_modulation_ratio,
+    plot_noise_correlation_matrix,
+    plot_population_orientation_histogram,
+    plot_psth_by_orientation,
+    plot_signal_correlation_matrix,
     plot_temporal_frequency_tuning,
+    plot_tuning_curve,
+)
+from .population import (
+    noise_correlations,
+    orientation_map_statistics,
+    signal_correlations,
+)
+from .selectivity import circular_variance, dosi_circular_normalised, gdsi, gosi
+from .statistics import (
+    anova_across_orientations,
+    bootstrap_ci,
+    bootstrap_ci_strata,
+    orientation_selectivity_significance,
+)
+from .temporal import (
+    f1_phase,
+    temporal_frequency_tuning,
+)
+from .tuning import (
+    OsMetricsResult,
+    compute_f0_f1_f2,
+    get_os_metrics,
+    preferred_dori,
+    tuning_bandwidth,
 )
 
 __all__ = [

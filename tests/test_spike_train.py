@@ -17,19 +17,17 @@ from neural_cca.sta.analysis import (
     psth,
     trial_to_trial_reliability,
 )
-
 from tests.conftest import (
-    make_regular_spikes,
-    make_poisson_spikes,
-    make_identical_trials,
     make_globally_sorted_poisson,
-    make_bursting_spikes,
+    make_identical_trials,
+    make_poisson_spikes,
+    make_regular_spikes,
 )
-
 
 # ---------------------------------------------------------------------------
 # Thin wrappers preserving the (spike_times, trials) tuple convention
 # ---------------------------------------------------------------------------
+
 
 def _regular_spikes(rate=50.0, duration=2.5, n_trials=20, stim_onset=0.5):
     d = make_regular_spikes(rate=rate, duration=duration, n_trials=n_trials)
@@ -42,13 +40,16 @@ def _poisson_spikes(rate=50.0, duration=2.5, n_trials=20, rng_seed=42):
 
 
 def _identical_trials(n_spikes_per_trial=10, duration=2.5, n_trials=20):
-    d = make_identical_trials(n_spikes_per_trial=n_spikes_per_trial, duration=duration, n_trials=n_trials)
+    d = make_identical_trials(
+        n_spikes_per_trial=n_spikes_per_trial, duration=duration, n_trials=n_trials
+    )
     return d["spike_times"], d["trials"]
 
 
 # ---------------------------------------------------------------------------
 # ISI violation rate
 # ---------------------------------------------------------------------------
+
 
 class TestISIViolationRate:
     def test_regular_no_violations(self):
@@ -75,7 +76,10 @@ class TestISIViolationRate:
     @staticmethod
     def _trial_based_poisson(rate_hz, n_trials=240, trial_dur=2.5, seed=42):
         d = make_globally_sorted_poisson(
-            rate=rate_hz, n_trials=n_trials, trial_dur=trial_dur, rng_seed=seed,
+            rate=rate_hz,
+            n_trials=n_trials,
+            trial_dur=trial_dur,
+            rng_seed=seed,
         )
         return d["spike_times"], d["trials"]
 
@@ -92,7 +96,9 @@ class TestISIViolationRate:
         # Trial-aware mode → expected rate is lambda^2 * tau ~ 0.016 Hz
         # for a 4 Hz Poisson cell with a 1 ms refractory period.
         good = isi_violation_rate(
-            spk, trials=tr, trial_duration=2.5,
+            spk,
+            trials=tr,
+            trial_duration=2.5,
         )
         assert good < 0.1, (
             f"Trial-aware ISI violation rate must be near zero for a "
@@ -113,16 +119,17 @@ class TestISIViolationRate:
         spk = np.concatenate(spk)
         tr = np.concatenate(tr)
         rate = isi_violation_rate(
-            spk, trials=tr, trial_duration=trial_dur,
+            spk,
+            trials=tr,
+            trial_duration=trial_dur,
         )
-        assert 0.35 < rate < 0.45, (
-            f"Expected 240 violations / 600 s ≈ 0.4 Hz, got {rate}"
-        )
+        assert 0.35 < rate < 0.45, f"Expected 240 violations / 600 s ≈ 0.4 Hz, got {rate}"
 
     def test_trial_aware_requires_trial_duration(self):
         with pytest.raises(ValueError, match="trial_duration"):
             isi_violation_rate(
-                np.array([0.1, 0.2]), trials=np.array([0, 0]),
+                np.array([0.1, 0.2]),
+                trials=np.array([0, 0]),
             )
 
 
@@ -136,11 +143,17 @@ class TestISIViolationRate:
 
 
 def _globally_sorted_trial_poisson(
-    rate=4.0, n_trials=240, trial_dur=2.5, seed=42,
+    rate=4.0,
+    n_trials=240,
+    trial_dur=2.5,
+    seed=42,
 ):
     """Thin wrapper around conftest.make_globally_sorted_poisson."""
     d = make_globally_sorted_poisson(
-        rate=rate, n_trials=n_trials, trial_dur=trial_dur, rng_seed=seed,
+        rate=rate,
+        n_trials=n_trials,
+        trial_dur=trial_dur,
+        rng_seed=seed,
     )
     return d["spike_times"], d["trials"]
 
@@ -150,14 +163,20 @@ class TestTrialRelativeBugClass:
         spk, tr = _globally_sorted_trial_poisson()
         # Without trials → contaminated by cross-trial diffs.
         bad = minimal_spike_train_analysis(
-            spk, n_trials=240, stim_window=(0.0, 2.5),
+            spk,
+            n_trials=240,
+            stim_window=(0.0, 2.5),
         )
         # With trials → real Poisson statistics.
         good = minimal_spike_train_analysis(
-            spk, trials=tr, stim_window=(0.0, 2.5),
+            spk,
+            trials=tr,
+            stim_window=(0.0, 2.5),
         )
         # Bug used to give LvR ≈ 4–5; correct value for Poisson is ~1.
-        assert bad["lvr"] > 2.0, "buggy LvR must reproduce so the test does not silently lose its negative case"
+        assert bad["lvr"] > 2.0, (
+            "buggy LvR must reproduce so the test does not silently lose its negative case"
+        )
         assert 0.7 < good["lvr"] < 1.3, f"trial-aware LvR must be ~1 for Poisson, got {good['lvr']}"
         # CV is closer to 1 in both modes for Poisson, but the trial-aware
         # value should be tighter.
@@ -172,9 +191,7 @@ class TestTrialRelativeBugClass:
         spk, tr = [], []
         for t in range(n_trials):
             base = rng.uniform(0, trial_dur - 0.01, 5)
-            burst = np.sort(np.concatenate([
-                np.array([b, b + 0.002, b + 0.004]) for b in base
-            ]))
+            burst = np.sort(np.concatenate([np.array([b, b + 0.002, b + 0.004]) for b in base]))
             spk.append(burst)
             tr.append(np.full(len(burst), t, dtype=np.int64))
         spk = np.concatenate(spk)
@@ -188,9 +205,7 @@ class TestTrialRelativeBugClass:
             "buggy LV used to wash out bursts; reproduce so the test "
             "does not silently lose its negative case"
         )
-        assert lv_good > 1.4, (
-            f"trial-aware LV must detect bursts, got {lv_good}"
-        )
+        assert lv_good > 1.4, f"trial-aware LV must detect bursts, got {lv_good}"
 
     def test_cv_log_isi_with_trials_matches_per_trial_pool(self):
         spk, tr = _globally_sorted_trial_poisson(rate=10.0)
@@ -213,13 +228,18 @@ class TestTrialRelativeBugClass:
         # roughly lambda^2 * bin_size * total_duration.
         bin_size, max_lag = 0.001, 0.05
         n_trials_total = int(len(np.unique(tr)))
-        expected_per_bin = (4.0 ** 2) * bin_size * (n_trials_total * 2.5)
+        expected_per_bin = (4.0**2) * bin_size * (n_trials_total * 2.5)
 
         bad_lags, bad_counts = autocorrelogram(
-            spk, bin_size=bin_size, max_lag=max_lag,
+            spk,
+            bin_size=bin_size,
+            max_lag=max_lag,
         )
         good_lags, good_counts = autocorrelogram(
-            spk, trials=tr, bin_size=bin_size, max_lag=max_lag,
+            spk,
+            trials=tr,
+            bin_size=bin_size,
+            max_lag=max_lag,
         )
         # Bug used to put the inflated counts ~ n_trials × correct value.
         assert bad_counts.sum() > 50 * good_counts.sum(), (
@@ -240,28 +260,29 @@ class TestTrialRelativeBugClass:
         # Without proper trial handling, the per-window CV would be
         # contaminated by cross-trial pairs and biased low.
         out = firing_rate_stability(
-            spk, trials=tr, stat="cv",
-            window_size=0.5, trial_duration=2.5,
+            spk,
+            trials=tr,
+            stat="cv",
+            window_size=0.5,
+            trial_duration=2.5,
         )
         # All windows should be defined and finite.
         assert np.all(np.isfinite(out["values"]))
         # Mean per-window CV should land in a reasonable Poisson range.
         # (Truncating ISIs to a window biases CV slightly below 1, but
         # not below 0.5.)
-        assert 0.5 < out["mean"] < 1.3, (
-            f"per-window CV mean = {out['mean']:.3f}, expected ~0.7-1.0"
-        )
+        assert 0.5 < out["mean"] < 1.3, f"per-window CV mean = {out['mean']:.3f}, expected ~0.7-1.0"
 
 
 # ---------------------------------------------------------------------------
 # Firing rate stability
 # ---------------------------------------------------------------------------
 
+
 class TestFiringRateStability:
     def test_constant_rate_low_cv(self):
         st, trials = _regular_spikes(rate=50.0)
-        result = firing_rate_stability(st, trials, stat="mean",
-                                       trial_duration=2.5)
+        result = firing_rate_stability(st, trials, stat="mean", trial_duration=2.5)
         # Constant rate → CV of stat should be low
         assert result["cv_of_stat"] < 0.5
 
@@ -283,6 +304,7 @@ class TestFiringRateStability:
 # Autocorrelogram
 # ---------------------------------------------------------------------------
 
+
 class TestAutocorrelogram:
     def test_symmetric(self):
         st, _ = _poisson_spikes(rate=100.0, n_trials=5)
@@ -290,7 +312,7 @@ class TestAutocorrelogram:
         # ACG should be roughly symmetric
         mid = len(counts) // 2
         left = counts[:mid]
-        right = counts[mid + 1:][::-1]
+        right = counts[mid + 1 :][::-1]
         # Trim to equal length in case of odd bin count
         min_len = min(len(left), len(right))
         left = left[:min_len]
@@ -310,6 +332,7 @@ class TestAutocorrelogram:
 # Fano factor
 # ---------------------------------------------------------------------------
 
+
 class TestFanoFactor:
     def test_regular_fano_low(self):
         st, trials = _regular_spikes(rate=50.0, n_trials=50)
@@ -328,11 +351,13 @@ class TestFanoFactor:
 
     def test_per_trial_requires_trials(self):
         import pytest as _pt
+
         with _pt.raises(ValueError, match="per_trial.*requires"):
             fano_factor(np.array([0.1, 0.2]), trials=None, mode="per_trial")
 
     def test_explicit_mode_no_warning(self):
         import warnings as _w
+
         st, trials = _poisson_spikes(rate=50.0, n_trials=20, rng_seed=0)
         with _w.catch_warnings():
             _w.simplefilter("error")  # any warning becomes an error
@@ -340,6 +365,7 @@ class TestFanoFactor:
 
     def test_implicit_mode_emits_deprecation(self):
         import pytest as _pt
+
         st, trials = _poisson_spikes(rate=50.0, n_trials=20, rng_seed=0)
         with _pt.warns(DeprecationWarning, match="explicitly"):
             fano_factor(st, trials)
@@ -348,6 +374,7 @@ class TestFanoFactor:
 # ---------------------------------------------------------------------------
 # Local variation (LV)
 # ---------------------------------------------------------------------------
+
 
 class TestLocalVariation:
     def test_regular_near_zero(self):
@@ -367,6 +394,7 @@ class TestLocalVariation:
 # ---------------------------------------------------------------------------
 # CV of log-ISI
 # ---------------------------------------------------------------------------
+
 
 class TestCvLogIsi:
     def test_regular_near_zero(self):
@@ -388,6 +416,7 @@ class TestCvLogIsi:
 # PSTH
 # ---------------------------------------------------------------------------
 
+
 class TestPSTH:
     def test_shape(self):
         st, trials = _poisson_spikes(rate=50.0, duration=2.5, n_trials=10)
@@ -404,7 +433,7 @@ class TestPSTH:
     def test_cluster_filtering(self):
         st, trials = _poisson_spikes(rate=50.0, n_trials=10)
         labels = np.zeros(len(st), dtype=int)
-        labels[len(st) // 2:] = 1
+        labels[len(st) // 2 :] = 1
         _, rate0 = psth(st, trials, labels, 0, trial_duration=2.5)
         _, rate1 = psth(st, trials, labels, 1, trial_duration=2.5)
         # Each filtered cluster should produce a non-empty PSTH with
@@ -426,17 +455,16 @@ class TestPSTH:
 # Trial-to-trial reliability
 # ---------------------------------------------------------------------------
 
+
 class TestTrialReliability:
     def test_identical_trials_high(self):
         st, trials = _identical_trials(n_spikes_per_trial=20, n_trials=30)
-        r = trial_to_trial_reliability(st, trials, stat="psth",
-                                       bin_size=0.05, trial_duration=2.5)
+        r = trial_to_trial_reliability(st, trials, stat="psth", bin_size=0.05, trial_duration=2.5)
         assert r > 0.9, f"Expected high reliability for identical trials, got {r}"
 
     def test_mfr_consistency(self):
         st, trials = _regular_spikes(rate=50.0, n_trials=30)
-        r = trial_to_trial_reliability(st, trials, stat="mfr",
-                                       trial_duration=2.5)
+        r = trial_to_trial_reliability(st, trials, stat="mfr", trial_duration=2.5)
         # Constant rate → perfect consistency → score ≈ 1
         assert r > 0.9, f"Expected high MFR consistency, got {r}"
 
@@ -449,6 +477,7 @@ class TestTrialReliability:
 # ---------------------------------------------------------------------------
 # First spike latency
 # ---------------------------------------------------------------------------
+
 
 class TestFirstSpikeLatency:
     def test_known_latency(self):

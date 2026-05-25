@@ -21,6 +21,7 @@ __all__ = [
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _log_gaussian(x: npt.NDArray, a: float, mu: float, sigma: float, b: float) -> np.ndarray:
     """Log-Gaussian: a * exp(-0.5*((log2(x)-mu)/sigma)^2) + b."""
     log_x = np.log2(np.maximum(x, 1e-12))
@@ -30,6 +31,7 @@ def _log_gaussian(x: npt.NDArray, a: float, mu: float, sigma: float, b: float) -
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def f1_phase(
     psth: npt.ArrayLike,

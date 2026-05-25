@@ -13,23 +13,24 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from neural_cca.tuning.selectivity import dosi_circular_normalised, circular_variance
-from neural_cca.tuning.tuning import (
-    tuning_bandwidth,
-    compute_f0_f1_f2,
-    preferred_dori,
-    get_os_metrics,
-)
-from neural_cca.sta.analysis import calc_mfr_trial
 from neural_cca._utils import guarded_divide, steps2degree
+from neural_cca.sta.analysis import calc_mfr_trial
+from neural_cca.tuning.selectivity import circular_variance, dosi_circular_normalised
+from neural_cca.tuning.tuning import (
+    compute_f0_f1_f2,
+    get_os_metrics,
+    preferred_dori,
+    tuning_bandwidth,
+)
+from tests.conftest import make_psth as _make_psth_helper
 
 # Shared helpers from conftest.py
-from tests.conftest import make_tuned_spikes as _make_tuned_spikes, make_psth as _make_psth_helper
-
+from tests.conftest import make_tuned_spikes as _make_tuned_spikes
 
 # ======================================================================
 # Tests: Selectivity indices
 # ======================================================================
+
 
 class TestOSI:
     """Tests for orientation selectivity index."""
@@ -65,9 +66,7 @@ class TestOSI:
         # Strong at 0°, weak at 180°
         angles = np.linspace(0, 360, 8, endpoint=False)
         activities = np.array([20, 10, 3, 2, 1, 2, 3, 10], dtype=float)
-        dsi = dosi_circular_normalised(
-            activities, angles, direction_selectivity=True
-        )
+        dsi = dosi_circular_normalised(activities, angles, direction_selectivity=True)
         assert dsi > 0.3, f"Direction selective: expected DSI > 0.3, got {dsi:.3f}"
 
     def test_direction_non_selective_symmetric(self):
@@ -75,9 +74,7 @@ class TestOSI:
         # Equal response at 0° and 180° (orientation-selective but not
         # direction-selective)
         activities = np.array([20, 5, 2, 5, 20, 5, 2, 5], dtype=float)
-        dsi = dosi_circular_normalised(
-            activities, 8, direction_selectivity=True
-        )
+        dsi = dosi_circular_normalised(activities, 8, direction_selectivity=True)
         assert dsi < 0.1, f"Non-dir-selective: expected DSI < 0.1, got {dsi:.3f}"
 
     def test_explicit_angles_same_as_int(self):
@@ -120,6 +117,7 @@ class TestCircularVariance:
 # Tests: Preferred orientation
 # ======================================================================
 
+
 class TestPreferredOrientation:
     """Tests for preferred_dori."""
 
@@ -127,9 +125,7 @@ class TestPreferredOrientation:
         """Neuron with peak response at 90° → preferred near 90°."""
         angles = np.linspace(0, 360, 12, endpoint=False)
         # Create Gaussian response centred at 90°
-        activities = 2.0 + 10.0 * np.exp(
-            -((angles - 90) ** 2) / (2 * 30 ** 2)
-        )
+        activities = 2.0 + 10.0 * np.exp(-((angles - 90) ** 2) / (2 * 30**2))
         pref = preferred_dori(activities, angles)
         assert 80 < pref < 100, f"Expected ~90°, got {pref:.1f}°"
 
@@ -144,18 +140,15 @@ class TestPreferredOrientation:
     def test_direction_preferred_at_45(self):
         """Direction-selective neuron preferring 45°."""
         angles = np.linspace(0, 360, 12, endpoint=False)
-        activities = 2.0 + 15.0 * np.exp(
-            -((angles - 45) ** 2) / (2 * 25 ** 2)
-        )
-        pref_dir = preferred_dori(
-            activities, angles, direction_selectivity=True
-        )
+        activities = 2.0 + 15.0 * np.exp(-((angles - 45) ** 2) / (2 * 25**2))
+        pref_dir = preferred_dori(activities, angles, direction_selectivity=True)
         assert 30 < pref_dir < 60, f"Expected ~45°, got {pref_dir:.1f}°"
 
 
 # ======================================================================
 # Tests: Tuning bandwidth
 # ======================================================================
+
 
 class TestTuningBandwidth:
     """Tests for tuning_bandwidth (HWHH of Gaussian fit)."""
@@ -165,21 +158,15 @@ class TestTuningBandwidth:
         orientations = np.linspace(0, 170, 18)
         sigma = 20.0
         expected_hwhh = sigma * np.sqrt(2 * np.log(2))  # ≈ 23.5°
-        responses = 2.0 + 10.0 * np.exp(
-            -((orientations - 90) ** 2) / (2 * sigma ** 2)
-        )
+        responses = 2.0 + 10.0 * np.exp(-((orientations - 90) ** 2) / (2 * sigma**2))
         bw = tuning_bandwidth(responses, orientations)
-        assert abs(bw - expected_hwhh) < 5, (
-            f"Expected HWHH ≈ {expected_hwhh:.1f}°, got {bw:.1f}°"
-        )
+        assert abs(bw - expected_hwhh) < 5, f"Expected HWHH ≈ {expected_hwhh:.1f}°, got {bw:.1f}°"
 
     def test_broad_tuning(self):
         """Gaussian with sigma=60° → broader bandwidth."""
         orientations = np.linspace(0, 170, 18)
         sigma = 60.0
-        responses = 2.0 + 10.0 * np.exp(
-            -((orientations - 90) ** 2) / (2 * sigma ** 2)
-        )
+        responses = 2.0 + 10.0 * np.exp(-((orientations - 90) ** 2) / (2 * sigma**2))
         bw = tuning_bandwidth(responses, orientations)
         assert bw > 40, f"Expected broad bandwidth > 40°, got {bw:.1f}°"
 
@@ -195,13 +182,18 @@ class TestTuningBandwidth:
 # Tests: F0 / F1 / F2 harmonics
 # ======================================================================
 
+
 class TestF0F1F2:
     """Tests for compute_f0_f1_f2 — simple vs complex cell classification."""
 
     @staticmethod
     def _make_psth(
-        f_stim: float, duration: float, bin_size: float,
-        dc: float, f1_amp: float, f2_amp: float = 0.0,
+        f_stim: float,
+        duration: float,
+        bin_size: float,
+        dc: float,
+        f1_amp: float,
+        f2_amp: float = 0.0,
     ) -> tuple[np.ndarray, float]:
         """Delegate to conftest.make_psth."""
         return _make_psth_helper(f_stim, duration, bin_size, dc, f1_amp, f2_amp)
@@ -209,8 +201,11 @@ class TestF0F1F2:
     def test_simple_cell_high_f1_f0(self):
         """Simple cell: strong modulation at f_stim → F1/F0 > 1."""
         psth, fs = self._make_psth(
-            f_stim=2.0, duration=2.0, bin_size=0.01,
-            dc=5.0, f1_amp=8.0,
+            f_stim=2.0,
+            duration=2.0,
+            bin_size=0.01,
+            dc=5.0,
+            f1_amp=8.0,
         )
         F0, F1, F2 = compute_f0_f1_f2(psth, fs, f_stim=2.0)
         ratio = float(F1 / F0)
@@ -219,8 +214,11 @@ class TestF0F1F2:
     def test_complex_cell_low_f1_f0(self):
         """Complex cell: weak modulation → F1/F0 < 1."""
         psth, fs = self._make_psth(
-            f_stim=2.0, duration=2.0, bin_size=0.01,
-            dc=10.0, f1_amp=1.0,
+            f_stim=2.0,
+            duration=2.0,
+            bin_size=0.01,
+            dc=10.0,
+            f1_amp=1.0,
         )
         F0, F1, F2 = compute_f0_f1_f2(psth, fs, f_stim=2.0)
         ratio = float(F1 / F0)
@@ -229,8 +227,12 @@ class TestF0F1F2:
     def test_f2_dominance(self):
         """Frequency-doubled response → F2 > F1."""
         psth, fs = self._make_psth(
-            f_stim=2.0, duration=2.0, bin_size=0.01,
-            dc=5.0, f1_amp=1.0, f2_amp=6.0,
+            f_stim=2.0,
+            duration=2.0,
+            bin_size=0.01,
+            dc=5.0,
+            f1_amp=1.0,
+            f2_amp=6.0,
         )
         F0, F1, F2 = compute_f0_f1_f2(psth, fs, f_stim=2.0)
         assert float(F2) > float(F1), (
@@ -241,27 +243,29 @@ class TestF0F1F2:
         """F0 should recover the mean firing rate."""
         dc = 7.5
         psth, fs = self._make_psth(
-            f_stim=2.0, duration=2.0, bin_size=0.01,
-            dc=dc, f1_amp=3.0,
+            f_stim=2.0,
+            duration=2.0,
+            bin_size=0.01,
+            dc=dc,
+            f1_amp=3.0,
         )
         F0, _, _ = compute_f0_f1_f2(psth, fs, f_stim=2.0)
         # With rectification, F0 will be slightly above dc
-        assert float(F0) >= dc * 0.95, (
-            f"F0 should approximate DC={dc}, got {float(F0):.3f}"
-        )
+        assert float(F0) >= dc * 0.95, f"F0 should approximate DC={dc}, got {float(F0):.3f}"
 
     def test_pure_sinusoid_amplitude(self):
         """Pure sinusoid: F1 amplitude should match input amplitude."""
         # No rectification needed (dc > amplitude)
         dc, amp = 10.0, 3.0
         psth, fs = self._make_psth(
-            f_stim=2.0, duration=2.0, bin_size=0.01,
-            dc=dc, f1_amp=amp,
+            f_stim=2.0,
+            duration=2.0,
+            bin_size=0.01,
+            dc=dc,
+            f1_amp=amp,
         )
         F0, F1, _ = compute_f0_f1_f2(psth, fs, f_stim=2.0)
-        assert float(F1) == pytest.approx(amp, abs=0.3), (
-            f"Expected F1 ≈ {amp}, got {float(F1):.3f}"
-        )
+        assert float(F1) == pytest.approx(amp, abs=0.3), f"Expected F1 ≈ {amp}, got {float(F1):.3f}"
 
     def test_multi_trial_batch(self):
         """F0/F1/F2 should work on batched PSTHs (n_trials, time)."""
@@ -282,6 +286,7 @@ class TestF0F1F2:
 # Tests: Trial-wise firing rates
 # ======================================================================
 
+
 class TestCalcMfrTrial:
     """Tests for calc_mfr_trial."""
 
@@ -291,16 +296,19 @@ class TestCalcMfrTrial:
         trial_dur = 2.5
         stim_dur = trial_dur - stim_onset  # 2.0 s
         # 10 evoked spikes in trial 0
-        spike_times = np.concatenate([
-            np.array([0.1, 0.2]),  # spontaneous
-            np.linspace(0.6, 2.4, 10),  # evoked
-        ])
+        spike_times = np.concatenate(
+            [
+                np.array([0.1, 0.2]),  # spontaneous
+                np.linspace(0.6, 2.4, 10),  # evoked
+            ]
+        )
         trials = np.zeros(12, dtype=np.int64)
-        angles = np.array([0.0])
 
         mfr = calc_mfr_trial(
-            spike_times, trials,
-            stim_window=(stim_onset, trial_dur), n_trials=1,
+            spike_times,
+            trials,
+            stim_window=(stim_onset, trial_dur),
+            n_trials=1,
         )
         assert mfr[0] == pytest.approx(10.0 / stim_dur, abs=0.01)
 
@@ -311,9 +319,13 @@ class TestCalcMfrTrial:
         cluster_labels = np.array([0, 0, 1, 1, 1])
 
         mfr = calc_mfr_trial(
-            spike_times, trials,
-            all_clusters=False, cluster_labels=cluster_labels, cluster_id=0,
-            stim_window=(0.5, 2.5), n_trials=1,
+            spike_times,
+            trials,
+            all_clusters=False,
+            cluster_labels=cluster_labels,
+            cluster_id=0,
+            stim_window=(0.5, 2.5),
+            n_trials=1,
         )
         # cluster 0 has 2 spikes, stim_duration = 2.0
         assert mfr[0] == pytest.approx(2.0 / 2.0, abs=0.01)
@@ -323,19 +335,25 @@ class TestCalcMfrTrial:
 # Tests: Full get_os_metrics pipeline
 # ======================================================================
 
+
 class TestGetOsMetrics:
     """Integration tests for get_os_metrics using synthetic neurons."""
 
     def test_tuned_neuron_metrics(self):
         """Sharply tuned neuron should produce high OSI, low CirVar."""
         st, tr, angles, angles_deg = _make_tuned_spikes(
-            preferred_angle=90.0, sigma_deg=25.0,
-            peak_rate=30.0, base_rate=2.0,
+            preferred_angle=90.0,
+            sigma_deg=25.0,
+            peak_rate=30.0,
+            base_rate=2.0,
         )
         metrics = get_os_metrics(
-            st, tr, angles,
+            st,
+            tr,
+            angles,
             stim_window=(0.5, 2.5),
-            stim_frequency=2.0, return_verbose=1,
+            stim_frequency=2.0,
+            return_verbose=1,
         )
         assert metrics["osi"] > 0.2, f"Tuned: osi={metrics['osi']:.3f}"
         assert metrics["circular_variance"] < 0.85, (
@@ -350,13 +368,18 @@ class TestGetOsMetrics:
         """Untuned neuron → OSI near 0."""
         # All angles get same rate
         st, tr, angles, _ = _make_tuned_spikes(
-            preferred_angle=0.0, sigma_deg=9999.0,
-            peak_rate=10.0, base_rate=10.0,
+            preferred_angle=0.0,
+            sigma_deg=9999.0,
+            peak_rate=10.0,
+            base_rate=10.0,
         )
         metrics = get_os_metrics(
-            st, tr, angles,
+            st,
+            tr,
+            angles,
             stim_window=(0.5, 2.5),
-            stim_frequency=2.0, return_verbose=0,
+            stim_frequency=2.0,
+            return_verbose=0,
         )
         assert metrics["osi"] < 0.15, f"Untuned: osi={metrics['osi']:.3f}"
 
@@ -376,6 +399,7 @@ class TestGetOsMetrics:
 # ======================================================================
 # Tests: Utility functions
 # ======================================================================
+
 
 class TestUtils:
     """Tests for guarded_divide and steps2degree."""
@@ -408,6 +432,7 @@ class TestUtils:
 # Tests: Extended get_os_metrics (v0.3.0)
 # ======================================================================
 
+
 class TestGetOsMetricsExtended:
     """Tests for new v0.3.0 params on get_os_metrics."""
 
@@ -423,8 +448,12 @@ class TestGetOsMetricsExtended:
         """compute_p_values=True adds p-value keys."""
         st, tr, angles, _ = _make_tuned_spikes(preferred_angle=90.0, sigma_deg=25.0)
         m = get_os_metrics(
-            st, tr, angles, compute_p_values=True,
-            compute_gosi=True, return_verbose=0,
+            st,
+            tr,
+            angles,
+            compute_p_values=True,
+            compute_gosi=True,
+            return_verbose=0,
         )
         assert "osi_p_value" in m
         assert "dsi_p_value" in m
@@ -435,7 +464,11 @@ class TestGetOsMetricsExtended:
         """fit_model='von_mises_orientation' adds fitting keys."""
         st, tr, angles, _ = _make_tuned_spikes(preferred_angle=90.0, sigma_deg=25.0)
         m = get_os_metrics(
-            st, tr, angles, fit_model="von_mises_orientation", return_verbose=0,
+            st,
+            tr,
+            angles,
+            fit_model="von_mises_orientation",
+            return_verbose=0,
         )
         assert m["fit_model"] == "von_mises_orientation"
         assert "fit_r_squared" in m
@@ -445,8 +478,13 @@ class TestGetOsMetricsExtended:
         """bootstrap_ci=True adds CI dicts."""
         st, tr, angles, _ = _make_tuned_spikes(preferred_angle=90.0, sigma_deg=25.0)
         m = get_os_metrics(
-            st, tr, angles, bootstrap_ci=True,
-            n_bootstrap=50, compute_gosi=True, return_verbose=0,
+            st,
+            tr,
+            angles,
+            bootstrap_ci=True,
+            n_bootstrap=50,
+            compute_gosi=True,
+            return_verbose=0,
         )
         assert "osi_ci" in m
         assert "ci_lower" in m["osi_ci"]
@@ -457,6 +495,7 @@ class TestGetOsMetricsExtended:
 # ======================================================================
 # Tests: per-trial spike filter is built exactly once per get_os_metrics
 # ======================================================================
+
 
 class TestTrialFilterReuse:
     """Regression tests for the _TrialFilteredSpikes refactor.
@@ -472,13 +511,17 @@ class TestTrialFilterReuse:
     def test_build_trial_filter_called_exactly_once(self):
         """Even with ANOVA, gOSI, and bootstrap CI all enabled."""
         from unittest.mock import patch
+
         from neural_cca.tuning import (
             _filter as _filter_mod,
+        )
+        from neural_cca.tuning import (
             tuning as _tuning_mod,
         )
 
         st, tr, angles, _ = _make_tuned_spikes(
-            preferred_angle=90.0, sigma_deg=25.0,
+            preferred_angle=90.0,
+            sigma_deg=25.0,
         )
 
         # Patch the name as imported into ``tuning`` (not the
@@ -491,7 +534,9 @@ class TestTrialFilterReuse:
             wraps=_filter_mod._build_trial_filter,
         ) as mock_build:
             get_os_metrics(
-                st, tr, angles,
+                st,
+                tr,
+                angles,
                 compute_p_values=True,
                 compute_gosi=True,
                 bootstrap_ci=True,
@@ -508,8 +553,11 @@ class TestTrialFilterReuse:
     def test_anova_skips_rebuild_when_filter_passed(self):
         """anova_across_orientations does not rebuild when given _filter."""
         from unittest.mock import patch
+
         from neural_cca.tuning import (
             _filter as _filter_mod,
+        )
+        from neural_cca.tuning import (
             statistics as _stats_mod,
         )
         from neural_cca.tuning._filter import (
@@ -520,10 +568,14 @@ class TestTrialFilterReuse:
         )
 
         st, tr, angles, _ = _make_tuned_spikes(
-            preferred_angle=90.0, sigma_deg=25.0,
+            preferred_angle=90.0,
+            sigma_deg=25.0,
         )
         prebuilt = _build_trial_filter(
-            st, tr, angles, stim_window=(0.5, 2.5),
+            st,
+            tr,
+            angles,
+            stim_window=(0.5, 2.5),
         )
 
         with patch.object(
@@ -532,7 +584,10 @@ class TestTrialFilterReuse:
             wraps=_filter_mod._build_trial_filter,
         ) as mock_build:
             result = anova_across_orientations(
-                st, tr, angles, stim_window=(0.5, 2.5),
+                st,
+                tr,
+                angles,
+                stim_window=(0.5, 2.5),
                 _filter=prebuilt,
             )
 
@@ -544,8 +599,11 @@ class TestTrialFilterReuse:
     def test_anova_rebuilds_when_no_filter_passed(self):
         """Public callers without a filter still get a fresh build."""
         from unittest.mock import patch
+
         from neural_cca.tuning import (
             _filter as _filter_mod,
+        )
+        from neural_cca.tuning import (
             statistics as _stats_mod,
         )
         from neural_cca.tuning.statistics import (
@@ -553,7 +611,8 @@ class TestTrialFilterReuse:
         )
 
         st, tr, angles, _ = _make_tuned_spikes(
-            preferred_angle=90.0, sigma_deg=25.0,
+            preferred_angle=90.0,
+            sigma_deg=25.0,
         )
         with patch.object(
             _stats_mod,
@@ -561,6 +620,9 @@ class TestTrialFilterReuse:
             wraps=_filter_mod._build_trial_filter,
         ) as mock_build:
             anova_across_orientations(
-                st, tr, angles, stim_window=(0.5, 2.5),
+                st,
+                tr,
+                angles,
+                stim_window=(0.5, 2.5),
             )
         assert mock_build.call_count == 1

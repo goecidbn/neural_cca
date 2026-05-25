@@ -35,6 +35,7 @@ __all__ = [
 # Original v0.1 plot
 # ---------------------------------------------------------------------------
 
+
 def orientation_scatter_vm(
     response: npt.NDArray[np.float64],
     orientations: npt.NDArray[np.float64] | int,
@@ -54,9 +55,7 @@ def orientation_scatter_vm(
         The polar ``Axes``.
     """
     if ax is None:
-        _, ax = plt.subplots(
-            figsize=(6, 6), dpi=300, subplot_kw={"projection": "polar"}
-        )
+        _, ax = plt.subplots(figsize=(6, 6), dpi=300, subplot_kw={"projection": "polar"})
 
     if isinstance(orientations, (int, np.integer)):
         orientations = np.linspace(0, 360, int(orientations), endpoint=False)
@@ -70,6 +69,7 @@ def orientation_scatter_vm(
 # ---------------------------------------------------------------------------
 # v0.3.0 plots
 # ---------------------------------------------------------------------------
+
 
 def plot_tuning_curve(
     responses: npt.ArrayLike,
@@ -99,8 +99,11 @@ def plot_tuning_curve(
     if sem is not None:
         sem = np.asarray(sem, dtype=np.float64)
         ax.fill_between(
-            orientations, responses - sem, responses + sem,
-            alpha=0.2, color="steelblue",
+            orientations,
+            responses - sem,
+            responses + sem,
+            alpha=0.2,
+            color="steelblue",
         )
 
     ax.plot(orientations, responses, "o-", color="steelblue", label="Data")
@@ -134,9 +137,7 @@ def plot_direction_polar(
         The polar ``Axes``.
     """
     if ax is None:
-        _, ax = plt.subplots(
-            figsize=(6, 6), dpi=150, subplot_kw={"projection": "polar"}
-        )
+        _, ax = plt.subplots(figsize=(6, 6), dpi=150, subplot_kw={"projection": "polar"})
 
     response = np.asarray(response, dtype=np.float64)
     orientations = np.asarray(orientations, dtype=np.float64)
@@ -193,8 +194,7 @@ def plot_f1f0_bars(
 
     colours = ["steelblue" if v >= threshold else "coral" for v in f1f0]
     ax.bar(range(n), f1f0, color=colours, edgecolor="black", linewidth=0.5)
-    ax.axhline(threshold, color="grey", linestyle="--", linewidth=1,
-               label=f"Threshold={threshold}")
+    ax.axhline(threshold, color="grey", linestyle="--", linewidth=1, label=f"Threshold={threshold}")
     ax.set_xticks(range(n))
     ax.set_xticklabels(cluster_ids)
     ax.set_xlabel("Cluster")
@@ -230,7 +230,9 @@ def plot_psth_by_orientation(
     time_axis = np.asarray(time_axis, dtype=np.float64)
 
     im = ax.imshow(
-        matrix, aspect="auto", origin="lower",
+        matrix,
+        aspect="auto",
+        origin="lower",
         extent=[time_axis[0], time_axis[-1], 0, len(sorted_angles)],
         cmap="viridis",
     )
@@ -264,8 +266,7 @@ def plot_f1_phase(
     phases = np.asarray(phases, dtype=np.float64)
     orientations = np.asarray(orientations, dtype=np.float64)
 
-    ax.scatter(orientations, np.rad2deg(phases), color="steelblue",
-               edgecolors="black", s=50)
+    ax.scatter(orientations, np.rad2deg(phases), color="steelblue", edgecolors="black", s=50)
     ax.set_xlabel("Orientation (°)")
     ax.set_ylabel("F1 Phase (°)")
     ax.set_title("F1 Phase vs. Orientation")
@@ -302,9 +303,7 @@ def plot_population_orientation_histogram(
         The polar ``Axes``.
     """
     if ax is None:
-        _, ax = plt.subplots(
-            figsize=(6, 6), dpi=150, subplot_kw={"projection": "polar"}
-        )
+        _, ax = plt.subplots(figsize=(6, 6), dpi=150, subplot_kw={"projection": "polar"})
 
     pref_oris = np.asarray(pref_oris, dtype=np.float64)
 
@@ -438,8 +437,7 @@ def plot_modulation_ratio(
     angles = sorted(mod_dict.keys())
     ratios = [mod_dict[a] for a in angles]
 
-    ax.bar(range(len(angles)), ratios, color="steelblue",
-           edgecolor="black", linewidth=0.5)
+    ax.bar(range(len(angles)), ratios, color="steelblue", edgecolor="black", linewidth=0.5)
     ax.set_xticks(range(len(angles)))
     ax.set_xticklabels([f"{a:.0f}°" for a in angles])
     ax.set_xlabel("Orientation (°)")

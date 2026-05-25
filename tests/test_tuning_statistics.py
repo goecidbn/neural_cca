@@ -9,26 +9,25 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from neural_cca.tuning.selectivity import (
+    dosi_circular_normalised,
+)
 from neural_cca.tuning.statistics import (
-    orientation_selectivity_significance,
     anova_across_orientations,
     bootstrap_ci,
     bootstrap_ci_strata,
-)
-from neural_cca.tuning.selectivity import (
-    dosi_circular_normalised,
+    orientation_selectivity_significance,
 )
 
 # Shared helper from conftest.py
 from tests.conftest import make_tuned_spikes as _make_tuned_spikes
 
-
 # ======================================================================
 # Tests: orientation_selectivity_significance
 # ======================================================================
 
-class TestOrientationSelectivitySignificance:
 
+class TestOrientationSelectivitySignificance:
     def test_tuned_significant(self):
         """Strongly tuned neuron → significant OSI (orientation-symmetric)."""
         # OSI doubles angles, so strong at 90° AND 270° (=same orientation),
@@ -37,11 +36,12 @@ class TestOrientationSelectivitySignificance:
         angles = np.linspace(0, 360, 12, endpoint=False)
         resp = np.array([1, 1, 1, 50, 50, 1, 1, 1, 1, 50, 50, 1], dtype=float)
         result = orientation_selectivity_significance(
-            resp, angles, n_permutations=1000, rng=42,
+            resp,
+            angles,
+            n_permutations=1000,
+            rng=42,
         )
-        assert result["p_permutation"] < 0.05, (
-            f"Expected p < 0.05, got {result['p_permutation']}"
-        )
+        assert result["p_permutation"] < 0.05, f"Expected p < 0.05, got {result['p_permutation']}"
         assert result["osi"] > 0.2
 
     def test_untuned_not_significant(self):
@@ -50,7 +50,10 @@ class TestOrientationSelectivitySignificance:
         angles = np.linspace(0, 360, 12, endpoint=False)
         resp = 10.0 + rng.normal(0, 0.1, 12)  # tiny noise
         result = orientation_selectivity_significance(
-            resp, angles, n_permutations=500, rng=42,
+            resp,
+            angles,
+            n_permutations=500,
+            rng=42,
         )
         assert result["p_permutation"] > 0.05
         assert result["is_significant"] is False
@@ -68,40 +71,49 @@ class TestOrientationSelectivitySignificance:
 # Tests: anova_across_orientations
 # ======================================================================
 
-class TestAnovaAcrossOrientations:
 
+class TestAnovaAcrossOrientations:
     def test_tuned_significant_anova(self):
         """Tuned neuron → significant ANOVA."""
         st, tr, angles, _ = _make_tuned_spikes(
-            preferred_angle=90.0, sigma_deg=25.0,
-            peak_rate=30.0, base_rate=2.0,
+            preferred_angle=90.0,
+            sigma_deg=25.0,
+            peak_rate=30.0,
+            base_rate=2.0,
         )
         result = anova_across_orientations(
-            st, tr, angles, stim_window=(0.5, 2.5),
+            st,
+            tr,
+            angles,
+            stim_window=(0.5, 2.5),
         )
-        assert result["p_value"] < 0.05, (
-            f"Expected ANOVA p < 0.05, got {result['p_value']:.4f}"
-        )
+        assert result["p_value"] < 0.05, f"Expected ANOVA p < 0.05, got {result['p_value']:.4f}"
         assert result["f_stat"] > 1.0
 
     def test_untuned_non_significant(self):
         """Untuned neuron → non-significant ANOVA."""
         st, tr, angles, _ = _make_tuned_spikes(
-            preferred_angle=0.0, sigma_deg=9999.0,
-            peak_rate=10.0, base_rate=10.0,
+            preferred_angle=0.0,
+            sigma_deg=9999.0,
+            peak_rate=10.0,
+            base_rate=10.0,
         )
         result = anova_across_orientations(
-            st, tr, angles, stim_window=(0.5, 2.5),
+            st,
+            tr,
+            angles,
+            stim_window=(0.5, 2.5),
         )
-        assert result["p_value"] > 0.01, (
-            f"Expected ANOVA p > 0.01, got {result['p_value']:.4f}"
-        )
+        assert result["p_value"] > 0.01, f"Expected ANOVA p > 0.01, got {result['p_value']:.4f}"
 
     def test_group_means_keys(self):
         """group_means should have one entry per unique angle."""
         st, tr, angles, angles_deg = _make_tuned_spikes(n_angles=8)
         result = anova_across_orientations(
-            st, tr, angles, stim_window=(0.5, 2.5),
+            st,
+            tr,
+            angles,
+            stim_window=(0.5, 2.5),
         )
         assert len(result["group_means"]) == 8
         assert len(result["group_stds"]) == 8
@@ -111,8 +123,8 @@ class TestAnovaAcrossOrientations:
 # Tests: bootstrap_ci
 # ======================================================================
 
-class TestBootstrapCI:
 
+class TestBootstrapCI:
     def test_known_mean(self):
         """Bootstrap CI should bracket the true mean."""
         rng = np.random.default_rng(42)
@@ -153,6 +165,7 @@ class TestBootstrapCI:
 # Tests: bootstrap_ci_strata
 # ======================================================================
 
+
 class TestBootstrapCIStrata:
     """Tests for stratified bootstrap with paired (data, label) input."""
 
@@ -161,8 +174,11 @@ class TestBootstrapCIStrata:
         data = rng.normal(size=40)
         strata = np.repeat([0, 1, 2, 3], 10)
         result = bootstrap_ci_strata(
-            data, strata, lambda d, s: float(np.mean(d)),
-            n_bootstrap=100, rng=0,
+            data,
+            strata,
+            lambda d, s: float(np.mean(d)),
+            n_bootstrap=100,
+            rng=0,
         )
         for key in ("estimate", "ci_lower", "ci_upper", "se"):
             assert key in result
@@ -176,17 +192,17 @@ class TestBootstrapCIStrata:
         n_trials_per = 20
         angles = np.repeat(angles_unique, n_trials_per)
         # Tuning curve: peak at 90° (and 270° because OSI doubles)
-        true_rates = 2.0 + 18.0 * (
-            np.cos(np.deg2rad(2 * (angles_unique - 90))) + 1.0
-        ) / 2.0
+        true_rates = 2.0 + 18.0 * (np.cos(np.deg2rad(2 * (angles_unique - 90))) + 1.0) / 2.0
         rates_per_angle = np.repeat(true_rates, n_trials_per)
         # Add Poisson-like noise
         data = rates_per_angle + rng.normal(0, 0.5, size=len(angles))
 
         result = bootstrap_ci_strata(
-            data, angles,
+            data,
+            angles,
             lambda d, s: dosi_circular_normalised(d, s),
-            n_bootstrap=200, rng=42,
+            n_bootstrap=200,
+            rng=42,
         )
         # The point estimate should be a meaningful OSI (>0.1)...
         assert result["estimate"] > 0.1
@@ -201,9 +217,7 @@ class TestBootstrapCIStrata:
         n_per = 5
         strata = np.repeat([10, 20, 30, 40], n_per)
         # data values encode their stratum: 10..14 for stratum 10, etc.
-        data = np.concatenate(
-            [np.arange(s, s + n_per, dtype=float) for s in (10, 20, 30, 40)]
-        )
+        data = np.concatenate([np.arange(s, s + n_per, dtype=float) for s in (10, 20, 30, 40)])
 
         captured = {"resampled": None}
 

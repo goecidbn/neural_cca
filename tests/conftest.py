@@ -24,7 +24,7 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 import pytest
-from numpy.random import Generator, PCG64DXSM, SeedSequence
+from numpy.random import PCG64DXSM, Generator, SeedSequence
 
 from neural_cca.sorting.containers import SortingData, SortingResult
 
@@ -177,7 +177,9 @@ def make_sorting_data(
 ) -> SortingData:
     """Full ``SortingData`` container with two-cluster waveforms."""
     wv = make_two_cluster_waveforms_only(
-        n_per=n_per, snippet_len=snippet_len, rng_seed=rng_seed,
+        n_per=n_per,
+        snippet_len=snippet_len,
+        rng_seed=rng_seed,
     )
     n = wv.shape[0]
     rng = _test_rng(rng_seed)
@@ -399,10 +401,11 @@ def make_bursting_spikes(
     tr: list[npt.NDArray] = []
     for t in range(n_trials):
         base = rng.uniform(0, trial_dur - 0.01, bursts_per_trial)
-        burst = np.sort(np.concatenate([
-            np.array([b + i * burst_isi for i in range(spikes_per_burst)])
-            for b in base
-        ]))
+        burst = np.sort(
+            np.concatenate(
+                [np.array([b + i * burst_isi for i in range(spikes_per_burst)]) for b in base]
+            )
+        )
         spk.append(burst)
         tr.append(np.full(len(burst), t, dtype=np.int64))
     spk_arr = np.concatenate(spk)
@@ -473,9 +476,7 @@ def make_tuned_spikes(
         ang = angles[t_idx]
         # Circular distance
         d = min(abs(ang - preferred_angle), 360 - abs(ang - preferred_angle))
-        rate = base_rate + (peak_rate - base_rate) * np.exp(
-            -(d ** 2) / (2 * sigma_deg ** 2)
-        )
+        rate = base_rate + (peak_rate - base_rate) * np.exp(-(d**2) / (2 * sigma_deg**2))
         # Spontaneous spikes
         n_spont = rng.poisson(base_rate * stimulus_onset)
         spont_times = rng.uniform(0, stimulus_onset, n_spont)
@@ -538,9 +539,7 @@ def make_double_gaussian_response(
         np.cos(theta - (theta0 + np.pi)),
     )
     return (
-        A1 * np.exp(-d1 ** 2 / (2 * sigma ** 2))
-        + A2 * np.exp(-d2 ** 2 / (2 * sigma ** 2))
-        + baseline
+        A1 * np.exp(-(d1**2) / (2 * sigma**2)) + A2 * np.exp(-(d2**2) / (2 * sigma**2)) + baseline
     )
 
 
@@ -555,9 +554,7 @@ def make_psth(
     """Synthetic PSTH with controlled harmonic content (deterministic)."""
     t = np.arange(0, duration, bin_size)
     psth = (
-        dc
-        + f1_amp * np.sin(2 * np.pi * f_stim * t)
-        + f2_amp * np.sin(2 * np.pi * 2 * f_stim * t)
+        dc + f1_amp * np.sin(2 * np.pi * f_stim * t) + f2_amp * np.sin(2 * np.pi * 2 * f_stim * t)
     )
     psth = np.maximum(psth, 0)  # firing rate can't be negative
     return psth, 1.0 / bin_size

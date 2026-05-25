@@ -7,21 +7,21 @@ import pytest
 
 zarr = pytest.importorskip("zarr")
 
-from neural_cca.sorting.io_util import SortingData
-from neural_cca.sorting.sorting import SortingResult
 from neural_cca.sorting.io_util import (
     QUALITY_METRIC_KINDS,
     QualityMetricKind,
+    SortingData,
     _infer_quality_metric_kind,
     read_zarr_sorting,
     to_zarr_clustered,
     to_zarr_flat,
 )
-
+from neural_cca.sorting.sorting import SortingResult
 
 # ---------------------------------------------------------------------------
 # Fixtures — the underlying data lives in conftest.py (``sample_zarr_data``)
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def sample_data(sample_zarr_data):
@@ -32,6 +32,7 @@ def sample_data(sample_zarr_data):
 # ---------------------------------------------------------------------------
 # Flat export roundtrip
 # ---------------------------------------------------------------------------
+
 
 class TestFlatExport:
     def test_roundtrip_labels(self, sample_data, tmp_path):
@@ -115,9 +116,7 @@ class TestFlatExport:
         result2, _ = read_zarr_sorting(store)
         assert result2.os_metrics is not None
         for cid in [0, 1, 2]:
-            assert result2.os_metrics[cid]["osi"] == pytest.approx(
-                result.os_metrics[cid]["osi"]
-            )
+            assert result2.os_metrics[cid]["osi"] == pytest.approx(result.os_metrics[cid]["osi"])
 
     def test_export_mode_attr(self, sample_data, tmp_path):
         data, result = sample_data
@@ -129,6 +128,7 @@ class TestFlatExport:
 # ---------------------------------------------------------------------------
 # Clustered export roundtrip
 # ---------------------------------------------------------------------------
+
 
 class TestClusteredExport:
     def test_roundtrip_labels(self, sample_data, tmp_path):
@@ -161,7 +161,8 @@ class TestClusteredExport:
         np.testing.assert_allclose(data.waveforms, data2.waveforms)
         np.testing.assert_array_equal(data.trials, data2.trials)
         np.testing.assert_array_equal(
-            result.cluster_labels, result2.cluster_labels,
+            result.cluster_labels,
+            result2.cluster_labels,
         )
 
     def test_original_index_array_written(self, sample_data, tmp_path):
@@ -183,7 +184,7 @@ class TestClusteredExport:
         # Concatenate per-cluster slices and check it covers exactly
         # 0 .. n_spikes - 1 once each.
         flat = np.concatenate(
-            [orig_idx_pad[i, :int(spike_count[i])] for i in range(len(spike_count))]
+            [orig_idx_pad[i, : int(spike_count[i])] for i in range(len(spike_count))]
         )
         np.testing.assert_array_equal(np.sort(flat), np.arange(data.n_spikes))
 
@@ -266,6 +267,7 @@ class TestClusteredExport:
 # Edge cases & error handling
 # ---------------------------------------------------------------------------
 
+
 class TestEdgeCases:
     def test_no_os_metrics(self, sample_data, tmp_path):
         data, result = sample_data
@@ -344,6 +346,7 @@ class TestEdgeCases:
 # Quality-metric schema (QualityMetricKind + registry)
 # ---------------------------------------------------------------------------
 
+
 class TestQualityMetricSchema:
     """Tests for the explicit QualityMetricKind dispatch."""
 
@@ -358,8 +361,7 @@ class TestQualityMetricSchema:
         _, result = sample_data
         for key in result.quality:
             assert key in QUALITY_METRIC_KINDS, (
-                f"Quality metric {key!r} is not registered in "
-                f"QUALITY_METRIC_KINDS — add it."
+                f"Quality metric {key!r} is not registered in QUALITY_METRIC_KINDS — add it."
             )
 
     def test_registered_kinds_match_fixture_shapes(self, sample_data):
@@ -386,7 +388,9 @@ class TestQualityMetricSchema:
                 assert kind_tags[key] == kind.value
 
     def test_unregistered_metric_emits_warning_on_write(
-        self, sample_data, tmp_path,
+        self,
+        sample_data,
+        tmp_path,
     ):
         """An unknown metric still serialises but warns the author."""
         data, result = sample_data
@@ -409,16 +413,15 @@ class TestQualityMetricSchema:
         }
         result.quality["isi_distribution"] = isis
         # Register at runtime so the writer takes the array branch.
-        QUALITY_METRIC_KINDS["isi_distribution"] = (
-            QualityMetricKind.PER_CLUSTER_ARRAY
-        )
+        QUALITY_METRIC_KINDS["isi_distribution"] = QualityMetricKind.PER_CLUSTER_ARRAY
         try:
             store = tmp_path / "arr.zarr"
             to_zarr_flat(result, data, store)
             result2, _ = read_zarr_sorting(store)
             for cid, arr in isis.items():
                 np.testing.assert_allclose(
-                    result2.quality["isi_distribution"][cid], arr,
+                    result2.quality["isi_distribution"][cid],
+                    arr,
                 )
         finally:
             del QUALITY_METRIC_KINDS["isi_distribution"]
@@ -440,17 +443,15 @@ class TestQualityMetricSchema:
             recovered = result2.quality["fit_summary"]
             assert set(recovered.keys()) == set(nested.keys())
             for cid in nested:
-                assert recovered[cid]["score"] == pytest.approx(
-                    nested[cid]["score"]
-                )
-                assert recovered[cid]["fano"] == pytest.approx(
-                    nested[cid]["fano"]
-                )
+                assert recovered[cid]["score"] == pytest.approx(nested[cid]["score"])
+                assert recovered[cid]["fano"] == pytest.approx(nested[cid]["fano"])
         finally:
             del QUALITY_METRIC_KINDS["fit_summary"]
 
     def test_string_keyed_dict_metric_no_longer_crashes(
-        self, sample_data, tmp_path,
+        self,
+        sample_data,
+        tmp_path,
     ):
         """A dict[str, float] metric must not corrupt the writer.
 

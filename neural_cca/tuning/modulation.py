@@ -9,9 +9,9 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 
-from ._filter import _TrialFilteredSpikes, _build_trial_filter
-from .tuning import compute_f0_f1_f2
 from .._utils import circ_dist, circ_mean, guarded_divide, wrap180
+from ._filter import _build_trial_filter, _TrialFilteredSpikes
+from .tuning import compute_f0_f1_f2
 
 __all__ = [
     "modulation_ratio_per_orientation",
@@ -57,7 +57,9 @@ def modulation_ratio_per_orientation(
     """
     if _filter is None:
         _filter = _build_trial_filter(
-            spike_times, trials, angles,
+            spike_times,
+            trials,
+            angles,
             stim_window=stim_window,
             cluster_labels=cluster_labels,
             cluster_id=cluster_id,

@@ -16,8 +16,7 @@ from neural_cca.sorting.sorting import (
     run_sorting_pipeline,
     sort_spikes,
 )
-
-from tests.conftest import make_two_cluster_waveforms_only, make_sorting_data
+from tests.conftest import make_sorting_data, make_two_cluster_waveforms_only
 
 
 def _make_two_cluster_waveforms(
@@ -27,7 +26,9 @@ def _make_two_cluster_waveforms(
 ) -> np.ndarray:
     """Thin wrapper preserving the original call convention."""
     return make_two_cluster_waveforms_only(
-        n_per=n_per, snippet_len=snippet_len, rng_seed=rng_seed,
+        n_per=n_per,
+        snippet_len=snippet_len,
+        rng_seed=rng_seed,
     )
 
 
@@ -39,8 +40,8 @@ def _make_sorting_data(n_per: int = 80, snippet_len: int = 32) -> SortingData:
 # _preprocess_waveforms
 # ======================================================================
 
-class TestPreprocessWaveforms:
 
+class TestPreprocessWaveforms:
     def test_none_returns_original(self):
         wv = _make_two_cluster_waveforms()
         out = _preprocess_waveforms(wv, "none")
@@ -90,13 +91,16 @@ class TestPreprocessWaveforms:
 # find_optimal_k & sort_spikes with preprocess
 # ======================================================================
 
-class TestSortSpikesPreprocess:
 
+class TestSortSpikesPreprocess:
     @pytest.mark.parametrize("mode", ["none", "center", "zscore", "pca", "zscore_pca"])
     def test_recovers_two_clusters(self, mode):
         wv = _make_two_cluster_waveforms()
         labels, km = sort_spikes(
-            wv, n_clusters=2, preprocess=mode, rng=0,
+            wv,
+            n_clusters=2,
+            preprocess=mode,
+            rng=0,
         )
         assert labels.shape == (wv.shape[0],)
         # Both clusters should be discovered.
@@ -111,19 +115,24 @@ class TestSortSpikesPreprocess:
         """KMeans centres should match the PCA-reduced feature dim."""
         wv = _make_two_cluster_waveforms()
         labels, km = sort_spikes(
-            wv, n_clusters=2, preprocess="pca", pca_components=3,
+            wv,
+            n_clusters=2,
+            preprocess="pca",
+            pca_components=3,
             rng=0,
         )
         assert km.cluster_centers_.shape == (2, 3)
 
 
 class TestFindOptimalKPreprocess:
-
     @pytest.mark.parametrize("mode", ["none", "center", "zscore", "pca", "zscore_pca"])
     def test_picks_two_for_two_cluster_data(self, mode):
         wv = _make_two_cluster_waveforms()
         best_k, scores = find_optimal_k(
-            wv, k_range=range(2, 5), preprocess=mode, rng=0,
+            wv,
+            k_range=range(2, 5),
+            preprocess=mode,
+            rng=0,
         )
         assert best_k == 2
         assert set(scores.keys()) == {2, 3, 4}
@@ -137,10 +146,16 @@ class TestFindOptimalKPreprocess:
         """
         wv = _make_two_cluster_waveforms()
         _, scores_raw = find_optimal_k(
-            wv, k_range=[2], preprocess="none", rng=0,
+            wv,
+            k_range=[2],
+            preprocess="none",
+            rng=0,
         )
         _, scores_pca = find_optimal_k(
-            wv, k_range=[2], preprocess="pca", pca_components=2,
+            wv,
+            k_range=[2],
+            preprocess="pca",
+            pca_components=2,
             rng=0,
         )
         # The scores should differ — they're computed in different
@@ -154,14 +169,18 @@ class TestFindOptimalKPreprocess:
 # run_sorting_pipeline preprocess threading
 # ======================================================================
 
-class TestPipelinePreprocess:
 
+class TestPipelinePreprocess:
     @pytest.mark.parametrize("mode", ["none", "center", "zscore", "pca", "zscore_pca"])
     def test_pipeline_runs(self, mode):
         data = _make_sorting_data()
         result = run_sorting_pipeline(
-            data, n_clusters=2, preprocess=mode,
-            compute_os=False, plot=False, rng=0,
+            data,
+            n_clusters=2,
+            preprocess=mode,
+            compute_os=False,
+            plot=False,
+            rng=0,
         )
         assert result.n_clusters == 2
         assert result.metadata["preprocess"] == mode
@@ -169,8 +188,13 @@ class TestPipelinePreprocess:
     def test_pca_components_in_metadata(self):
         data = _make_sorting_data()
         result = run_sorting_pipeline(
-            data, n_clusters=2, preprocess="pca", pca_components=4,
-            compute_os=False, plot=False, rng=0,
+            data,
+            n_clusters=2,
+            preprocess="pca",
+            pca_components=4,
+            compute_os=False,
+            plot=False,
+            rng=0,
         )
         assert result.metadata["preprocess"] == "pca"
         assert result.metadata["pca_components"] == 4
@@ -180,21 +204,31 @@ class TestPipelinePreprocess:
         preprocessing — quality metrics live in raw waveform space."""
         data = _make_sorting_data()
         r_none = run_sorting_pipeline(
-            data, n_clusters=2, preprocess="none",
-            compute_os=False, plot=False, rng=0,
+            data,
+            n_clusters=2,
+            preprocess="none",
+            compute_os=False,
+            plot=False,
+            rng=0,
         )
         r_zscore = run_sorting_pipeline(
-            data, n_clusters=2, preprocess="zscore",
-            compute_os=False, plot=False, rng=0,
+            data,
+            n_clusters=2,
+            preprocess="zscore",
+            compute_os=False,
+            plot=False,
+            rng=0,
         )
         # SNR is computed on raw waveforms, so it does not depend on
         # the preprocessing mode (provided both runs converge to the
         # same clustering, which they do here for well-separated data).
-        assert r_none.quality["snr_per_cluster"].keys() == \
-            r_zscore.quality["snr_per_cluster"].keys()
+        assert (
+            r_none.quality["snr_per_cluster"].keys() == r_zscore.quality["snr_per_cluster"].keys()
+        )
         for cid in r_none.quality["snr_per_cluster"]:
             assert r_none.quality["snr_per_cluster"][cid] == pytest.approx(
-                r_zscore.quality["snr_per_cluster"][cid], rel=1e-9,
+                r_zscore.quality["snr_per_cluster"][cid],
+                rel=1e-9,
             )
 
     def test_default_preprocess_is_zscore_pca(self):
@@ -207,7 +241,10 @@ class TestPipelinePreprocess:
         """
         data = _make_sorting_data()
         result = run_sorting_pipeline(
-            data, n_clusters=2, compute_os=False, plot=False,
+            data,
+            n_clusters=2,
+            compute_os=False,
+            plot=False,
             rng=0,
         )
         assert result.metadata["preprocess"] == "zscore_pca"
@@ -216,6 +253,7 @@ class TestPipelinePreprocess:
 # ======================================================================
 # Chained zscore_pca mode
 # ======================================================================
+
 
 class TestZscorePcaChain:
     """Tests for the chained zscore → PCA → KMeans pipeline."""
@@ -231,7 +269,10 @@ class TestZscorePcaChain:
         rng = np.random.default_rng(7)
         wv = rng.standard_normal((200, 32)) + np.linspace(0, 50, 32)
         out = _preprocess_waveforms(
-            wv, "zscore_pca", pca_components=4, rng=0,
+            wv,
+            "zscore_pca",
+            pca_components=4,
+            rng=0,
         )
         np.testing.assert_allclose(out.mean(axis=0), 0.0, atol=1e-10)
 
@@ -248,10 +289,16 @@ class TestZscorePcaChain:
         wv = rng.standard_normal((300, 16))
         wv[:, 7] *= 50.0  # one dominant axis
         feats_pca = _preprocess_waveforms(
-            wv, "pca", pca_components=4, rng=0,
+            wv,
+            "pca",
+            pca_components=4,
+            rng=0,
         )
         feats_chain = _preprocess_waveforms(
-            wv, "zscore_pca", pca_components=4, rng=0,
+            wv,
+            "zscore_pca",
+            pca_components=4,
+            rng=0,
         )
         # Different feature spaces — Frobenius distance is
         # well above any rounding margin.
@@ -260,8 +307,11 @@ class TestZscorePcaChain:
     def test_zscore_pca_recovers_two_clusters(self):
         wv = _make_two_cluster_waveforms()
         labels, _ = sort_spikes(
-            wv, n_clusters=2, preprocess="zscore_pca",
-            pca_components=4, rng=0,
+            wv,
+            n_clusters=2,
+            preprocess="zscore_pca",
+            pca_components=4,
+            rng=0,
         )
         assert len(np.unique(labels)) == 2
         counts = np.bincount(labels)
@@ -270,16 +320,24 @@ class TestZscorePcaChain:
     def test_zscore_pca_kmeans_lives_in_pca_space(self):
         wv = _make_two_cluster_waveforms()
         _, km = sort_spikes(
-            wv, n_clusters=2, preprocess="zscore_pca",
-            pca_components=3, rng=0,
+            wv,
+            n_clusters=2,
+            preprocess="zscore_pca",
+            pca_components=3,
+            rng=0,
         )
         assert km.cluster_centers_.shape == (2, 3)
 
     def test_zscore_pca_pipeline_metadata(self):
         data = _make_sorting_data()
         result = run_sorting_pipeline(
-            data, n_clusters=2, preprocess="zscore_pca",
-            pca_components=4, compute_os=False, plot=False, rng=0,
+            data,
+            n_clusters=2,
+            preprocess="zscore_pca",
+            pca_components=4,
+            compute_os=False,
+            plot=False,
+            rng=0,
         )
         assert result.metadata["preprocess"] == "zscore_pca"
         assert result.metadata["pca_components"] == 4
@@ -300,7 +358,10 @@ class TestZscorePcaChain:
         # PCs in the output.
         for k in (2, 5, 8):
             out = _preprocess_waveforms(
-                wv, "zscore_pca", pca_components=k, rng=0,
+                wv,
+                "zscore_pca",
+                pca_components=k,
+                rng=0,
             )
             assert out.shape == (300, k)
 
@@ -309,6 +370,9 @@ class TestZscorePcaChain:
         # least one near-degenerate column.
         wv[:, 0] = 0.0  # zero-variance column
         out_default = _preprocess_waveforms(
-            wv, "zscore_pca", pca_components=None, rng=0,
+            wv,
+            "zscore_pca",
+            pca_components=None,
+            rng=0,
         )
         assert out_default.shape[1] < wv.shape[1]

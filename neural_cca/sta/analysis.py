@@ -43,6 +43,7 @@ __all__ = [
 # Helper: filter spike times by cluster
 # ---------------------------------------------------------------------------
 
+
 def _filter_cluster(
     spike_times: npt.NDArray,
     cluster_labels: npt.NDArray | None,
@@ -88,6 +89,7 @@ def _positive_isis(spike_times: npt.NDArray) -> npt.NDArray:
 # them sit below 1 ms for a moderately dense recording).  See the bug
 # tracker entry for "ISI rate of 600 Hz on a 4 Hz cell" for the full
 # failure mode.
+
 
 def _per_trial_isis(
     spike_times: npt.NDArray,
@@ -207,7 +209,7 @@ def _pooled_lvr(
         valid = si_ > 0
         if not np.any(valid):
             continue
-        ft = 1.0 - (4.0 * isis[:-1] * isis[1:]) / si_ ** 2
+        ft = 1.0 - (4.0 * isis[:-1] * isis[1:]) / si_**2
         st_term = 1.0 + (4.0 * refractory_period) / si_
         contrib = ft * st_term
         total_num += float(np.sum(contrib[valid]))
@@ -220,6 +222,7 @@ def _pooled_lvr(
 # ---------------------------------------------------------------------------
 # Per-trial firing rate (moved from tuning.trial_rates)
 # ---------------------------------------------------------------------------
+
 
 def calc_mfr_trial(
     spike_times: npt.NDArray[np.float64],
@@ -256,16 +259,11 @@ def calc_mfr_trial(
             both provided when ``all_clusters=False``.
     """
     if not all_clusters and (cluster_labels is None or cluster_id is None):
-        raise ValueError(
-            "cluster_labels and cluster_id required when "
-            "all_clusters is False."
-        )
+        raise ValueError("cluster_labels and cluster_id required when all_clusters is False.")
 
     s_on, s_end = stim_window
     stim_duration = s_end - s_on
-    n_trials = (
-        n_trials if n_trials is not None else len(np.unique(trials))
-    )
+    n_trials = n_trials if n_trials is not None else len(np.unique(trials))
 
     mfr_by_trial: dict[int, float] = {}
     for trial_idx in np.arange(n_trials):
@@ -276,8 +274,7 @@ def calc_mfr_trial(
             n_spikes = np.sum((sts > s_on) & (sts <= s_end))
         else:
             n_spikes = np.sum(
-                (sts > s_on) & (sts <= s_end)
-                & (cluster_labels[trial_mask] == cluster_id)
+                (sts > s_on) & (sts <= s_end) & (cluster_labels[trial_mask] == cluster_id)
             )
 
         mfr_by_trial[trial_idx] = float(n_spikes) / stim_duration
@@ -288,6 +285,7 @@ def calc_mfr_trial(
 # ---------------------------------------------------------------------------
 # Original function (unchanged)
 # ---------------------------------------------------------------------------
+
 
 def minimal_spike_train_analysis(
     spike_times: npt.NDArray[np.float64],
@@ -346,14 +344,10 @@ def minimal_spike_train_analysis(
             *cluster_id* is provided.
     """
     if only_spontaneous and only_stimulated:
-        raise ValueError(
-            "Cannot analyse both only_spontaneous and only_stimulated "
-            "simultaneously."
-        )
+        raise ValueError("Cannot analyse both only_spontaneous and only_stimulated simultaneously.")
     if (cluster_labels is None) != (cluster_id is None):
         raise ValueError(
-            "Both cluster_labels and cluster_id must be provided "
-            "together, or both omitted."
+            "Both cluster_labels and cluster_id must be provided together, or both omitted."
         )
 
     s_on, s_end = stim_window
@@ -381,9 +375,7 @@ def minimal_spike_train_analysis(
         trials = trials[win_mask]
 
     # --- Mean firing rate ---
-    n_trials_eff = (
-        int(len(np.unique(trials))) if trials is not None else int(n_trials)
-    )
+    n_trials_eff = int(len(np.unique(trials))) if trials is not None else int(n_trials)
     duration = n_trials_eff * per_trial_win
     mfr = len(spike_times) / duration if duration > 0 else 0.0
 
@@ -401,6 +393,7 @@ def minimal_spike_train_analysis(
 # ---------------------------------------------------------------------------
 # ISI violation rate
 # ---------------------------------------------------------------------------
+
 
 def isi_violation_rate(
     spike_times: npt.NDArray,
@@ -467,9 +460,7 @@ def isi_violation_rate(
 
     if trials is not None:
         if trial_duration is None:
-            raise ValueError(
-                "trial_duration is required when 'trials' is provided."
-            )
+            raise ValueError("trial_duration is required when 'trials' is provided.")
         n_violations = 0
         n_isis = 0
         for t in np.unique(trials):
@@ -506,6 +497,7 @@ def isi_violation_rate(
 # ---------------------------------------------------------------------------
 # Firing rate stability
 # ---------------------------------------------------------------------------
+
 
 def firing_rate_stability(
     spike_times: npt.NDArray,
@@ -595,9 +587,7 @@ def firing_rate_stability(
     values: list[float] = []
     for lo, hi in zip(edges[:-1], edges[1:]):
         if stat == "mean":
-            n_trials_total = (
-                int(len(np.unique(trials))) if trials is not None else 1
-            )
+            n_trials_total = int(len(np.unique(trials))) if trials is not None else 1
             dur = (hi - lo) * n_trials_total
             n_in_win = int(np.sum((st >= lo) & (st < hi)))
             values.append(n_in_win / dur if dur > 0 else 0.0)
@@ -617,10 +607,9 @@ def firing_rate_stability(
         elif stat == "fano":
             if trials is not None:
                 mask = (st >= lo) & (st < hi)
-                counts = np.array([
-                    int(np.sum(mask & (trials == t)))
-                    for t in np.unique(trials)
-                ], dtype=np.float64)
+                counts = np.array(
+                    [int(np.sum(mask & (trials == t))) for t in np.unique(trials)], dtype=np.float64
+                )
                 m = counts.mean()
                 values.append(float(counts.var() / m) if m > 0 else float("nan"))
             else:
@@ -658,7 +647,7 @@ def _compute_lvr(isis: npt.NDArray, refractory_period: float = 0.001) -> float:
     n = len(isis)
     s_ = 3.0 / (n - 1)
     si_ = isis[:-1] + isis[1:]
-    ft_ = 1.0 - (4.0 * isis[:-1] * isis[1:]) / si_ ** 2
+    ft_ = 1.0 - (4.0 * isis[:-1] * isis[1:]) / si_**2
     st_ = 1.0 + (4.0 * refractory_period) / si_
     return float(s_ * np.sum(ft_ * st_))
 
@@ -666,6 +655,7 @@ def _compute_lvr(isis: npt.NDArray, refractory_period: float = 0.001) -> float:
 # ---------------------------------------------------------------------------
 # Autocorrelogram
 # ---------------------------------------------------------------------------
+
 
 def autocorrelogram(
     spike_times: npt.NDArray,
@@ -734,14 +724,15 @@ def autocorrelogram(
         # enter ``counts``.
         for i in range(len(st_sorted)):
             j = i + 1
-            while (
-                j < len(st_sorted)
-                and (st_sorted[j] - st_sorted[i]) <= effective_max_lag
-            ):
+            while j < len(st_sorted) and (st_sorted[j] - st_sorted[i]) <= effective_max_lag:
                 diff = st_sorted[j] - st_sorted[i]
-                counts[:] = counts + np.histogram(
-                    [diff, -diff], bins=edges,
-                )[0]
+                counts[:] = (
+                    counts
+                    + np.histogram(
+                        [diff, -diff],
+                        bins=edges,
+                    )[0]
+                )
                 j += 1
 
     if trials is None:
@@ -826,23 +817,19 @@ def fano_factor(
         # warn so callers move to the explicit form.
         inferred = "per_trial" if trials is not None else "per_bin"
         warnings.warn(
-            "fano_factor() inferred mode={!r} from the presence of "
+            f"fano_factor() inferred mode={inferred!r} from the presence of "
             "`trials`; this implicit behaviour is deprecated. Pass "
             "mode='per_trial' or mode='per_bin' explicitly — they "
-            "are *not* directly comparable.".format(inferred),
+            "are *not* directly comparable.",
             DeprecationWarning,
             stacklevel=2,
         )
         mode = inferred  # type: ignore[assignment]
 
     if mode not in ("per_trial", "per_bin"):
-        raise ValueError(
-            f"mode must be 'per_trial' or 'per_bin', got {mode!r}."
-        )
+        raise ValueError(f"mode must be 'per_trial' or 'per_bin', got {mode!r}.")
     if mode == "per_trial" and trials is None:
-        raise ValueError(
-            "fano_factor(mode='per_trial') requires the `trials` array."
-        )
+        raise ValueError("fano_factor(mode='per_trial') requires the `trials` array.")
 
     if cluster_labels is not None and cluster_id is not None:
         mask = cluster_labels == cluster_id
@@ -873,6 +860,7 @@ def fano_factor(
 # Local variation (LV) — standalone
 # ---------------------------------------------------------------------------
 
+
 def local_variation(
     spike_times: npt.NDArray,
     trials: npt.NDArray | None = None,
@@ -902,7 +890,10 @@ def local_variation(
         LV (float).  ``np.nan`` if there are fewer than 2 valid pairs.
     """
     per_trial_isis = _per_trial_isis(
-        spike_times, trials, cluster_labels=cluster_labels, cluster_id=cluster_id,
+        spike_times,
+        trials,
+        cluster_labels=cluster_labels,
+        cluster_id=cluster_id,
     )
     return _pooled_lv(per_trial_isis)
 
@@ -910,6 +901,7 @@ def local_variation(
 # ---------------------------------------------------------------------------
 # CV of log-ISI
 # ---------------------------------------------------------------------------
+
 
 def cv_log_isi(
     spike_times: npt.NDArray,
@@ -943,7 +935,10 @@ def cv_log_isi(
         the ratio is numerically undefined.
     """
     per_trial_isis = _per_trial_isis(
-        spike_times, trials, cluster_labels=cluster_labels, cluster_id=cluster_id,
+        spike_times,
+        trials,
+        cluster_labels=cluster_labels,
+        cluster_id=cluster_id,
     )
     return _pooled_cv_log_isi(per_trial_isis)
 
@@ -951,6 +946,7 @@ def cv_log_isi(
 # ---------------------------------------------------------------------------
 # PSTH
 # ---------------------------------------------------------------------------
+
 
 def psth(
     spike_times: npt.NDArray,
@@ -1000,6 +996,7 @@ def psth(
 # Trial-to-trial reliability
 # ---------------------------------------------------------------------------
 
+
 def _per_trial_psths(
     spike_times: npt.NDArray,
     trials: npt.NDArray,
@@ -1045,8 +1042,8 @@ def trial_to_trial_reliability(
         :func:`trial_to_trial_correlation_matrix`.
 
     For ``stat="f1_phase"``, compute the F1 phase for each trial's
-    PSTH and return the mean resultant length |R| of the phases (high
-    means consistent phase).  Requires *stim_frequency*.
+    PSTH and return the mean resultant length :math:`|R|` of the phases
+    (high means consistent phase).  Requires *stim_frequency*.
 
     For other *stat* values (``"mfr"``, ``"cv"``, ``"logcv"``,
     ``"lv"``, ``"lvr"``, ``"fano"``), compute the per-trial statistic
@@ -1074,9 +1071,7 @@ def trial_to_trial_reliability(
             is ``None``.
     """
     if stat == "f1_phase" and stim_frequency is None:
-        raise ValueError(
-            "stim_frequency is required when stat='f1_phase'."
-        )
+        raise ValueError("stim_frequency is required when stat='f1_phase'.")
     if cluster_labels is not None and cluster_id is not None:
         mask = cluster_labels == cluster_id
         spike_times = spike_times[mask]
@@ -1124,9 +1119,7 @@ def trial_to_trial_reliability(
         if stat == "mfr":
             per_trial.append(len(t_spikes) / dur if dur > 0 else 0.0)
         elif stat == "cv":
-            per_trial.append(
-                float(np.std(isis) / np.mean(isis)) if len(isis) > 1 else np.nan
-            )
+            per_trial.append(float(np.std(isis) / np.mean(isis)) if len(isis) > 1 else np.nan)
         elif stat == "logcv":
             if len(isis) > 1:
                 # log10 to match ``cv_log_isi`` (literature convention).
@@ -1226,6 +1219,7 @@ def trial_to_trial_correlation_matrix(
 # First spike latency
 # ---------------------------------------------------------------------------
 
+
 def first_spike_latency(
     spike_times: npt.NDArray,
     trials: npt.NDArray,
@@ -1272,5 +1266,6 @@ def first_spike_latency(
         "median": float(np.median(valid)) if len(valid) > 0 else np.nan,
         "std": float(np.std(valid)) if len(valid) > 0 else np.nan,
         "frac_responsive": float(len(valid) / len(unique_trials))
-        if len(unique_trials) > 0 else 0.0,
+        if len(unique_trials) > 0
+        else 0.0,
     }

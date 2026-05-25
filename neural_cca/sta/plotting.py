@@ -13,8 +13,14 @@ import numpy.typing as npt
 
 from .analysis import (
     autocorrelogram as _acg,
-    first_spike_latency as _fsl,
+)
+from .analysis import (
     firing_rate_stability as _frs,
+)
+from .analysis import (
+    first_spike_latency as _fsl,
+)
+from .analysis import (
     psth as _psth,
 )
 
@@ -72,10 +78,23 @@ def plot_isi_histogram(
         _, ax = plt.subplots(figsize=(8, 4), dpi=150)
 
     n_bins = max(1, int(np.ceil(bin_max / bin_width)))
-    ax.hist(isis, range=(0, bin_max), bins=n_bins,
-            color=color, alpha=0.7, edgecolor="black", linewidth=0.3)
-    ax.axvline(refractory_period, color="red", linestyle="--",
-               linewidth=1, alpha=0.7, label=f"refr. period ({refractory_period*1e3:.1f} ms)")
+    ax.hist(
+        isis,
+        range=(0, bin_max),
+        bins=n_bins,
+        color=color,
+        alpha=0.7,
+        edgecolor="black",
+        linewidth=0.3,
+    )
+    ax.axvline(
+        refractory_period,
+        color="red",
+        linestyle="--",
+        linewidth=1,
+        alpha=0.7,
+        label=f"refr. period ({refractory_period * 1e3:.1f} ms)",
+    )
     ax.set_xlabel("ISI (s)")
     ax.set_ylabel("Count")
     ax.set_title("Inter-Spike Interval Distribution")
@@ -112,10 +131,8 @@ def plot_waveform_snippets(
     time_ms = np.arange(snippet_length) / waveform_fs * 1000.0
     sign = -1.0 if invert else 1.0
 
-    ax.plot(time_ms, sign * waveforms.T, color=color, alpha=alpha,
-            linewidth=0.5, rasterized=True)
-    ax.plot(time_ms, sign * np.mean(waveforms, axis=0), color="red",
-            linewidth=2, label="Mean")
+    ax.plot(time_ms, sign * waveforms.T, color=color, alpha=alpha, linewidth=0.5, rasterized=True)
+    ax.plot(time_ms, sign * np.mean(waveforms, axis=0), color="red", linewidth=2, label="Mean")
     ax.set_xlabel("Time (ms)")
     ax.set_ylabel("Amplitude (a.u.)")
     ax.set_title(f"Spike Waveforms (n={len(waveforms)})")
@@ -148,11 +165,16 @@ def plot_spike_raster(
     if ax is None:
         _, ax = plt.subplots(figsize=(10, 6), dpi=150)
 
-    ax.scatter(spike_times, trials, marker="|", s=marker_size,
-               color=color, linewidth=0.5)
+    ax.scatter(spike_times, trials, marker="|", s=marker_size, color=color, linewidth=0.5)
     if stim_onset is not None:
-        ax.axvline(stim_onset, color="red", linestyle="--",
-                   linewidth=0.8, alpha=0.6, label="Stimulus onset")
+        ax.axvline(
+            stim_onset,
+            color="red",
+            linestyle="--",
+            linewidth=0.8,
+            alpha=0.6,
+            label="Stimulus onset",
+        )
         ax.legend(fontsize="small")
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Trial")
@@ -164,6 +186,7 @@ def plot_spike_raster(
 # ---------------------------------------------------------------------------
 # New visualisations
 # ---------------------------------------------------------------------------
+
 
 def plot_autocorrelogram(
     spike_times: npt.NDArray,
@@ -207,12 +230,16 @@ def plot_autocorrelogram(
         bin_size=bin_size,
         max_lag=max_lag,
     )
-    ax.bar(lags * 1000, counts, width=bin_size * 1000 * 0.9,
-           color=color, edgecolor="none")
-    ax.axvline(-refractory_period * 1000, color="red", linestyle="--",
-               linewidth=0.8, alpha=0.7)
-    ax.axvline(refractory_period * 1000, color="red", linestyle="--",
-               linewidth=0.8, alpha=0.7, label=f"refr. {refractory_period*1e3:.1f} ms")
+    ax.bar(lags * 1000, counts, width=bin_size * 1000 * 0.9, color=color, edgecolor="none")
+    ax.axvline(-refractory_period * 1000, color="red", linestyle="--", linewidth=0.8, alpha=0.7)
+    ax.axvline(
+        refractory_period * 1000,
+        color="red",
+        linestyle="--",
+        linewidth=0.8,
+        alpha=0.7,
+        label=f"refr. {refractory_period * 1e3:.1f} ms",
+    )
     ax.set_xlabel("Lag (ms)")
     ax.set_ylabel("Count")
     ax.set_title("Autocorrelogram")
@@ -249,12 +276,24 @@ def plot_psth(
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 3), dpi=150)
-    centres, rate = _psth(spike_times, trials, cluster_labels, cluster_id,
-                          bin_size=bin_size, trial_duration=trial_duration)
+    centres, rate = _psth(
+        spike_times,
+        trials,
+        cluster_labels,
+        cluster_id,
+        bin_size=bin_size,
+        trial_duration=trial_duration,
+    )
     ax.bar(centres, rate, width=bin_size * 0.9, color=color, edgecolor="none")
     if stim_onset is not None:
-        ax.axvline(stim_onset, color="red", linestyle="--",
-                   linewidth=0.8, alpha=0.7, label="Stimulus onset")
+        ax.axvline(
+            stim_onset,
+            color="red",
+            linestyle="--",
+            linewidth=0.8,
+            alpha=0.7,
+            label="Stimulus onset",
+        )
         ax.legend(fontsize=8)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Firing rate (Hz)")
@@ -291,15 +330,27 @@ def plot_firing_rate_stability(
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 3), dpi=150)
-    result = _frs(spike_times, trials, cluster_labels, cluster_id,
-                  window_size=window_size, stat=stat, trial_duration=trial_duration)
+    result = _frs(
+        spike_times,
+        trials,
+        cluster_labels,
+        cluster_id,
+        window_size=window_size,
+        stat=stat,
+        trial_duration=trial_duration,
+    )
     values = result["values"]
     n = len(values)
     edges = np.linspace(0, trial_duration, n + 1)
     centres = 0.5 * (edges[:-1] + edges[1:])
     ax.plot(centres, values, "o-", color=color, linewidth=1.5, markersize=4)
-    ax.axhline(result["mean"], color="gray", linestyle="--", linewidth=0.8,
-               label=f"mean = {result['mean']:.3f}")
+    ax.axhline(
+        result["mean"],
+        color="gray",
+        linestyle="--",
+        linewidth=0.8,
+        label=f"mean = {result['mean']:.3f}",
+    )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(stat.upper())
     ax.set_title(f"Firing rate stability ({stat})")
@@ -334,22 +385,22 @@ def plot_first_spike_latency(
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(5, 3), dpi=150)
-    result = _fsl(spike_times, trials, cluster_labels, cluster_id,
-                  stim_onset=stim_onset)
+    result = _fsl(spike_times, trials, cluster_labels, cluster_id, stim_onset=stim_onset)
     lats = result["latencies"]
     valid = lats[~np.isnan(lats)]
     if len(valid) > 0:
-        ax.hist(valid * 1000, bins=n_bins, color=color, alpha=0.7,
-                edgecolor="white", linewidth=0.3)
-        ax.axvline(result["mean"] * 1000, color="tomato", linestyle="--",
-                   linewidth=1.2, label=f"mean = {result['mean']*1000:.1f} ms")
+        ax.hist(valid * 1000, bins=n_bins, color=color, alpha=0.7, edgecolor="white", linewidth=0.3)
+        ax.axvline(
+            result["mean"] * 1000,
+            color="tomato",
+            linestyle="--",
+            linewidth=1.2,
+            label=f"mean = {result['mean'] * 1000:.1f} ms",
+        )
         ax.legend(fontsize=8)
     ax.set_xlabel("Latency (ms)")
     ax.set_ylabel("Count")
-    ax.set_title(
-        f"First spike latency "
-        f"(responsive: {result['frac_responsive']:.0%})"
-    )
+    ax.set_title(f"First spike latency (responsive: {result['frac_responsive']:.0%})")
     return ax
 
 
@@ -397,9 +448,13 @@ def plot_trial_reliability_heatmap(
         t_spikes = spike_times[trials == t]
         mat[i], _ = np.histogram(t_spikes, bins=edges)
 
-    im = ax.imshow(mat, aspect="auto", cmap="hot",
-                   extent=[0, trial_duration, len(unique_trials), 0],
-                   interpolation="nearest")
+    im = ax.imshow(
+        mat,
+        aspect="auto",
+        cmap="hot",
+        extent=[0, trial_duration, len(unique_trials), 0],
+        interpolation="nearest",
+    )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Trial")
     ax.set_title("Trial-by-trial spike counts")

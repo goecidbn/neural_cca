@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Sequence
 
 import matplotlib.pyplot as plt
@@ -10,15 +9,14 @@ import numpy as np
 import numpy.typing as npt
 from scipy import stats as sp_stats
 
-from .containers import SortingData
-from .metrics import d_prime_pairwise_matrix
-
 # Cross-package imports for the optional polar-MFR panel.  These are
 # part of the same distribution and have no back-edge to sorting,
 # so importing them at module top is safe and replaces the previous
 # in-function ``try/except ImportError``.
 from ..sta.analysis import calc_mfr_trial
 from ..tuning.plotting import orientation_scatter_vm
+from .containers import SortingData
+from .metrics import d_prime_pairwise_matrix
 
 __all__ = [
     "plot_sorting_summary",
@@ -31,12 +29,24 @@ __all__ = [
 ]
 
 _COLORS_LIGHT = [
-    "cornflowerblue", "salmon", "lightgreen", "plum",
-    "sandybrown", "lightskyblue", "khaki", "thistle",
+    "cornflowerblue",
+    "salmon",
+    "lightgreen",
+    "plum",
+    "sandybrown",
+    "lightskyblue",
+    "khaki",
+    "thistle",
 ]
 _COLORS_DARK = [
-    "blue", "red", "green", "purple",
-    "darkorange", "darkblue", "olive", "darkviolet",
+    "blue",
+    "red",
+    "green",
+    "purple",
+    "darkorange",
+    "darkblue",
+    "olive",
+    "darkviolet",
 ]
 
 
@@ -94,19 +104,25 @@ def plot_sorting_summary(
         axs["A"].set_title(f"Cluster {cl} waveforms (n={len(wv_cl)})")
         axs["A"].set_ylabel("Amplitude (a.u.)")
         axs["A"].set_xlabel("Time (ms)")
-        axs["A"].plot(t_ms, sign * wv_cl.T, color=c_light, alpha=0.15,
-                      linewidth=0.3, rasterized=True)
-        axs["A"].plot(t_ms, sign * wv_cl.mean(axis=0), color=c_dark,
-                      linewidth=2)
+        axs["A"].plot(
+            t_ms, sign * wv_cl.T, color=c_light, alpha=0.15, linewidth=0.3, rasterized=True
+        )
+        axs["A"].plot(t_ms, sign * wv_cl.mean(axis=0), color=c_dark, linewidth=2)
 
         # --- B: Spike raster + PSTH ---
         st_cl = data.spike_times[cl_mask]
         axs["B"].set_title(f"Cluster {cl} spike histogram")
-        axs["B"].axvline(x=data.stim_window[0], color="black",
-                         linestyle="--", linewidth=0.5, alpha=0.5,
-                         label="Stimulus onset")
-        axs["B"].scatter(st_cl, np.zeros_like(st_cl), marker="|",
-                         linewidth=0.1, color="black", s=10)
+        axs["B"].axvline(
+            x=data.stim_window[0],
+            color="black",
+            linestyle="--",
+            linewidth=0.5,
+            alpha=0.5,
+            label="Stimulus onset",
+        )
+        axs["B"].scatter(
+            st_cl, np.zeros_like(st_cl), marker="|", linewidth=0.1, color="black", s=10
+        )
         axs["B"].hist(st_cl, bins=hist_bins, color=c_light, alpha=0.7)
         axs["B"].set_xlim(0, data.stim_window[1])
         axs["B"].set_ylabel("Count")
@@ -115,9 +131,11 @@ def plot_sorting_summary(
         # --- C: Polar MFR (optional) ---
         if has_angles:
             mfrs = calc_mfr_trial(
-                data.spike_times, data.trials,
+                data.spike_times,
+                data.trials,
                 all_clusters=False,
-                cluster_labels=cluster_labels, cluster_id=int(cl),
+                cluster_labels=cluster_labels,
+                cluster_id=int(cl),
                 stim_window=data.stim_window,
                 n_trials=data.n_trials,
             )
@@ -162,6 +180,7 @@ def plot_k_search(
 # ---------------------------------------------------------------------------
 # New metric visualisations
 # ---------------------------------------------------------------------------
+
 
 def plot_metric_bars(
     metric_dict: dict[int, float],
@@ -235,8 +254,11 @@ def plot_d_prime_matrix(
             if np.isnan(v):
                 continue
             ax.text(
-                j, i, f"{v:.1f}",
-                ha="center", va="center",
+                j,
+                i,
+                f"{v:.1f}",
+                ha="center",
+                va="center",
                 fontsize=8,
                 color="white" if v > midpoint else "black",
             )
@@ -291,11 +313,21 @@ def plot_waveform_stability(
     late_mask = t_sorted >= pct_vals[-1]
 
     if early_mask.sum() > 0:
-        ax.plot(t_ms, np.mean(wv_sorted[early_mask], axis=0),
-                color="steelblue", linewidth=2, label=f"Early (<{percentiles[0]}%)")
+        ax.plot(
+            t_ms,
+            np.mean(wv_sorted[early_mask], axis=0),
+            color="steelblue",
+            linewidth=2,
+            label=f"Early (<{percentiles[0]}%)",
+        )
     if late_mask.sum() > 0:
-        ax.plot(t_ms, np.mean(wv_sorted[late_mask], axis=0),
-                color="tomato", linewidth=2, label=f"Late (>{percentiles[-1]}%)")
+        ax.plot(
+            t_ms,
+            np.mean(wv_sorted[late_mask], axis=0),
+            color="tomato",
+            linewidth=2,
+            label=f"Late (>{percentiles[-1]}%)",
+        )
 
     if early_mask.sum() > 0 and late_mask.sum() > 0:
         r, _ = sp_stats.pearsonr(
@@ -344,8 +376,13 @@ def plot_amplitude_drift(
         r, p = sp_stats.spearmanr(idx, amps)
         # Linear trend for visualisation
         slope, intercept = np.polyfit(idx, amps, 1)
-        ax.plot(idx, slope * idx + intercept, color="tomato", linewidth=1.5,
-                label=f"Spearman r={r:.3f}, p={p:.2e}")
+        ax.plot(
+            idx,
+            slope * idx + intercept,
+            color="tomato",
+            linewidth=1.5,
+            label=f"Spearman r={r:.3f}, p={p:.2e}",
+        )
         ax.legend(fontsize=8)
 
     ax.set_xlabel("Spike index (chronological)")
@@ -384,21 +421,35 @@ def plot_amplitude_histogram(
         wv = wv[np.asarray(cluster_labels) == cluster_id]
 
     amps = np.max(wv, axis=1) - np.min(wv, axis=1)
-    ax.hist(amps, bins=n_bins, color="steelblue", alpha=0.7, density=True,
-            edgecolor="white", linewidth=0.3)
+    ax.hist(
+        amps,
+        bins=n_bins,
+        color="steelblue",
+        alpha=0.7,
+        density=True,
+        edgecolor="white",
+        linewidth=0.3,
+    )
 
     if len(amps) >= 10:
         mu, sigma = sp_stats.norm.fit(amps)
         x = np.linspace(mu - 4 * sigma, mu + 4 * sigma, 200)
-        ax.plot(x, sp_stats.norm.pdf(x, mu, sigma), color="tomato",
-                linewidth=1.5, label="Gaussian fit")
+        ax.plot(
+            x, sp_stats.norm.pdf(x, mu, sigma), color="tomato", linewidth=1.5, label="Gaussian fit"
+        )
         threshold = amps.min()
-        ax.axvline(threshold, color="gray", linestyle="--", linewidth=1,
-                   label=f"Min amp = {threshold:.1f}")
+        ax.axvline(
+            threshold, color="gray", linestyle="--", linewidth=1, label=f"Min amp = {threshold:.1f}"
+        )
         # Shade missing region
         x_fill = np.linspace(mu - 4 * sigma, threshold, 100)
-        ax.fill_between(x_fill, sp_stats.norm.pdf(x_fill, mu, sigma),
-                        color="tomato", alpha=0.2, label="Est. missing")
+        ax.fill_between(
+            x_fill,
+            sp_stats.norm.pdf(x_fill, mu, sigma),
+            color="tomato",
+            alpha=0.2,
+            label="Est. missing",
+        )
         frac = sp_stats.norm.cdf(threshold, loc=mu, scale=sigma)
         ax.set_title(f"Amplitude distribution (est. missing: {frac:.1%})")
         ax.legend(fontsize=8)

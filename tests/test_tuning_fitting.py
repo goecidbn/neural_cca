@@ -10,25 +10,26 @@ import numpy as np
 import pytest
 
 from neural_cca.tuning.fitting import (
-    von_mises_fit,
     double_gaussian_fit,
-    tuning_curve_interpolation,
     goodness_of_fit,
+    tuning_curve_interpolation,
+    von_mises_fit,
+)
+from tests.conftest import (
+    make_double_gaussian_response as _double_gaussian_response,
 )
 
 # Shared helpers from conftest.py
 from tests.conftest import (
     make_von_mises_response as _von_mises_response,
-    make_double_gaussian_response as _double_gaussian_response,
 )
-
 
 # ======================================================================
 # Tests: von Mises fit
 # ======================================================================
 
-class TestVonMisesFit:
 
+class TestVonMisesFit:
     def test_recovers_known_params(self):
         """Fit should recover kappa and preferred orientation."""
         oris = np.linspace(0, 170, 18)
@@ -44,7 +45,10 @@ class TestVonMisesFit:
         oris = np.linspace(0, 170, 18)
         resp = _von_mises_response(oris)
         result, fitted = von_mises_fit(
-            resp, oris, tuning_type="orientation", return_fit=True,
+            resp,
+            oris,
+            tuning_type="orientation",
+            return_fit=True,
         )
         assert isinstance(result, dict)
         assert len(fitted) == len(oris)
@@ -89,8 +93,8 @@ class TestVonMisesFit:
 # Tests: double Gaussian fit
 # ======================================================================
 
-class TestDoubleGaussianFit:
 
+class TestDoubleGaussianFit:
     def test_recovers_bimodal(self):
         """Should capture bimodal tuning curve."""
         oris = np.linspace(0, 350, 36)
@@ -111,14 +115,16 @@ class TestDoubleGaussianFit:
 # Tests: tuning curve interpolation
 # ======================================================================
 
-class TestTuningCurveInterpolation:
 
+class TestTuningCurveInterpolation:
     def test_preferred_near_true(self):
         """Interpolated preferred orientation within ±10° of true."""
         oris = np.linspace(0, 170, 12)
         resp = _von_mises_response(oris, kappa=3.0, theta0_deg=73.0)
         pref = tuning_curve_interpolation(
-            resp, oris, model="von_mises_orientation",
+            resp,
+            oris,
+            model="von_mises_orientation",
         )
         assert abs(pref - 73.0) < 10.0, f"Expected ~73°, got {pref:.1f}°"
 
@@ -132,8 +138,8 @@ class TestTuningCurveInterpolation:
 # Tests: goodness of fit
 # ======================================================================
 
-class TestGoodnessOfFit:
 
+class TestGoodnessOfFit:
     def test_perfect_fit(self):
         """Identical observed and predicted → R² = 1."""
         obs = np.array([1, 2, 3, 4, 5], dtype=float)

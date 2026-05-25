@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Sequence
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -40,7 +40,7 @@ def neg_silhouette_score(
     cluster_labels: npt.ArrayLike,
     relative: bool = True,
     all_clusters: bool = True,
-    cluster_id: Optional[int] = None,
+    cluster_id: int | None = None,
     **kwargs: Any,
 ) -> float | int:
     """Proportion (or count) of samples with negative silhouette score.
@@ -229,9 +229,7 @@ def rpvs(
     """
     _validate_cluster_args(all_clusters, cluster_id)
     if not all_clusters and cluster_labels is None:
-        raise ValueError(
-            "cluster_labels must be provided when all_clusters is False."
-        )
+        raise ValueError("cluster_labels must be provided when all_clusters is False.")
 
     # The denominator is the *spike count*, not the valid-ISI count.
     # Dividing by ``len(diffs)`` would inflate the value for trial-based
@@ -274,21 +272,21 @@ def rpvs(
 # Helper: validate all_clusters / cluster_id combination
 # ---------------------------------------------------------------------------
 
+
 def _validate_cluster_args(
-    all_clusters: bool, cluster_id: int | None,
+    all_clusters: bool,
+    cluster_id: int | None,
 ) -> None:
     if all_clusters and cluster_id is not None:
-        raise ValueError(
-            "Cannot specify 'cluster_id' when 'all_clusters' is True."
-        )
+        raise ValueError("Cannot specify 'cluster_id' when 'all_clusters' is True.")
     if not all_clusters and cluster_id is None:
-        raise ValueError(
-            "Must specify 'cluster_id' when 'all_clusters' is False."
-        )
+        raise ValueError("Must specify 'cluster_id' when 'all_clusters' is False.")
 
 
 def _mahalanobis_sq(
-    features: npt.NDArray, mean: npt.NDArray, cov_inv: npt.NDArray,
+    features: npt.NDArray,
+    mean: npt.NDArray,
+    cov_inv: npt.NDArray,
 ) -> npt.NDArray:
     """Squared Mahalanobis distance of each row in *features* from *mean*."""
     diff = features - mean
@@ -323,6 +321,7 @@ def _ledoit_wolf_precision(features: npt.NDArray) -> npt.NDArray:
 # ---------------------------------------------------------------------------
 # Isolation distance  (Harris et al. 2000)
 # ---------------------------------------------------------------------------
+
 
 def isolation_distance(
     features: npt.NDArray,
@@ -381,6 +380,7 @@ def isolation_distance(
 # L-ratio
 # ---------------------------------------------------------------------------
 
+
 def l_ratio(
     features: npt.NDArray,
     cluster_labels: npt.NDArray,
@@ -435,8 +435,11 @@ def l_ratio(
 # d-prime (signal detection theory)
 # ---------------------------------------------------------------------------
 
+
 def _cluster_mean_per_dim_variance(
-    features: npt.NDArray, cluster_labels: npt.NDArray, unique: npt.NDArray,
+    features: npt.NDArray,
+    cluster_labels: npt.NDArray,
+    unique: npt.NDArray,
 ) -> dict[int, tuple[npt.NDArray, float]]:
     """Per-cluster mean vector and *mean per-feature* variance.
 
@@ -561,6 +564,7 @@ def d_prime(
 # Peak amplitude SNR
 # ---------------------------------------------------------------------------
 
+
 def peak_amplitude_snr(
     waveforms: npt.NDArray,
     cluster_labels: npt.NDArray | None = None,
@@ -587,9 +591,7 @@ def peak_amplitude_snr(
         SNR (float) or ``{cluster_id: float}`` dict.
     """
     if not all_clusters and cluster_id is None:
-        raise ValueError(
-            "Must specify 'cluster_id' when 'all_clusters' is False."
-        )
+        raise ValueError("Must specify 'cluster_id' when 'all_clusters' is False.")
 
     baseline_n = max(1, int(waveforms.shape[1] * baseline_frac))
 
@@ -608,16 +610,14 @@ def peak_amplitude_snr(
 
     cluster_labels = np.asarray(cluster_labels)
     if all_clusters:
-        return {
-            int(c): _snr_one(waveforms[cluster_labels == c])
-            for c in np.unique(cluster_labels)
-        }
+        return {int(c): _snr_one(waveforms[cluster_labels == c]) for c in np.unique(cluster_labels)}
     return _snr_one(waveforms[cluster_labels == cluster_id])
 
 
 # ---------------------------------------------------------------------------
 # Waveform stability over time
 # ---------------------------------------------------------------------------
+
 
 def waveform_stability(
     spike_times: npt.NDArray,
@@ -651,9 +651,7 @@ def waveform_stability(
         ``np.nan`` if insufficient spikes in any window.
     """
     if not all_clusters and cluster_id is None:
-        raise ValueError(
-            "Must specify 'cluster_id' when 'all_clusters' is False."
-        )
+        raise ValueError("Must specify 'cluster_id' when 'all_clusters' is False.")
 
     def _stab_one(times: npt.NDArray, waves: npt.NDArray) -> float:
         if len(times) < 4:
@@ -700,6 +698,7 @@ def waveform_stability(
 # Amplitude drift (Spearman correlation of amplitude vs. time)
 # ---------------------------------------------------------------------------
 
+
 def amplitude_drift(
     waveforms: npt.NDArray,
     cluster_labels: npt.NDArray | None = None,
@@ -722,9 +721,7 @@ def amplitude_drift(
         ``np.nan`` if fewer than 3 spikes.
     """
     if not all_clusters and cluster_id is None:
-        raise ValueError(
-            "Must specify 'cluster_id' when 'all_clusters' is False."
-        )
+        raise ValueError("Must specify 'cluster_id' when 'all_clusters' is False.")
 
     def _drift_one(w: npt.NDArray) -> float:
         if len(w) < 3:
@@ -739,8 +736,7 @@ def amplitude_drift(
     cluster_labels = np.asarray(cluster_labels)
     if all_clusters:
         return {
-            int(c): _drift_one(waveforms[cluster_labels == c])
-            for c in np.unique(cluster_labels)
+            int(c): _drift_one(waveforms[cluster_labels == c]) for c in np.unique(cluster_labels)
         }
     return _drift_one(waveforms[cluster_labels == cluster_id])
 
@@ -748,6 +744,7 @@ def amplitude_drift(
 # ---------------------------------------------------------------------------
 # Fraction of missing spikes
 # ---------------------------------------------------------------------------
+
 
 def fraction_missing(
     waveforms: npt.NDArray,
@@ -768,9 +765,9 @@ def fraction_missing(
        *normality_warn* is ``True`` (the default) a Kolmogorov–Smirnov
        test is run against the fitted normal and a warning is emitted
        when ``KS p < 0.01``.  Inspect the amplitude histogram before
-       trusting this number — see also the :doc:`known issues
-       <../known_issues>` page for alternatives (Gaussian-mixture fits,
-       lognormal fits, empirical-CDF tail estimation).
+       trusting this number — alternatives for non-Gaussian amplitude
+       distributions include Gaussian-mixture fits, lognormal fits, or
+       empirical-CDF tail estimation.
 
     Args:
         waveforms: Waveform matrix ``(n_spikes, snippet_length)``.
@@ -785,9 +782,7 @@ def fraction_missing(
         ``np.nan`` if fewer than 10 spikes.
     """
     if not all_clusters and cluster_id is None:
-        raise ValueError(
-            "Must specify 'cluster_id' when 'all_clusters' is False."
-        )
+        raise ValueError("Must specify 'cluster_id' when 'all_clusters' is False.")
 
     def _frac_one(w: npt.NDArray, label: object | None = None) -> float:
         if len(w) < 10:
@@ -824,5 +819,6 @@ def fraction_missing(
             for c in np.unique(cluster_labels)
         }
     return _frac_one(
-        waveforms[cluster_labels == cluster_id], label=cluster_id,
+        waveforms[cluster_labels == cluster_id],
+        label=cluster_id,
     )

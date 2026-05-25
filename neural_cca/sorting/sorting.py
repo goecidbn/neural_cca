@@ -8,7 +8,8 @@ and produce a diagnostic summary figure.
 from __future__ import annotations
 
 import warnings
-from typing import Literal, Sequence
+from collections.abc import Sequence
+from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +18,12 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 
+# Cross-package import for orientation-selectivity metrics.  This is
+# only used by ``evaluate_os_per_cluster``; if ``tuning`` is
+# unavailable for any reason at install time the import will fail at
+# module load and the user gets a clean error.  ``tuning`` is
+# part of the same distribution so this is always installed.
+from ..tuning.tuning import get_os_metrics
 from .containers import SortingData, SortingResult
 from .metrics import (
     amplitude_drift,
@@ -31,14 +38,7 @@ from .metrics import (
     rpvs,
     waveform_stability,
 )
-from .plotting import plot_sorting_summary, plot_k_search
-
-# Cross-package import for orientation-selectivity metrics.  This is
-# only used by ``evaluate_os_per_cluster``; if ``tuning`` is
-# unavailable for any reason at install time the import will fail at
-# module load and the user gets a clean error.  ``tuning`` is
-# part of the same distribution so this is always installed.
-from ..tuning.tuning import get_os_metrics
+from .plotting import plot_k_search, plot_sorting_summary
 
 __all__ = [
     "SortingResult",
@@ -73,14 +73,13 @@ def _as_seed(rng: np.random.Generator | int | None) -> int | None:
         return int(rng)
     if isinstance(rng, np.random.Generator):
         return int(rng.integers(0, 2**31 - 1))
-    raise TypeError(
-        f"rng must be a Generator, int, or None; got {type(rng).__name__}"
-    )
+    raise TypeError(f"rng must be a Generator, int, or None; got {type(rng).__name__}")
 
 
 # ---------------------------------------------------------------------------
 # Clustering helpers
 # ---------------------------------------------------------------------------
+
 
 def _center(x: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Subtract the per-feature mean."""
@@ -204,8 +203,10 @@ def find_optimal_k(
     """
     seed = _as_seed(rng)
     feats = _preprocess_waveforms(
-        waveforms, preprocess,
-        pca_components=pca_components, rng=seed,
+        waveforms,
+        preprocess,
+        pca_components=pca_components,
+        rng=seed,
     )
     scores: dict[int, float] = {}
     for k in k_range:
@@ -244,8 +245,10 @@ def sort_spikes(
     """
     seed = _as_seed(rng)
     feats = _preprocess_waveforms(
-        waveforms, preprocess,
-        pca_components=pca_components, rng=seed,
+        waveforms,
+        preprocess,
+        pca_components=pca_components,
+        rng=seed,
     )
     km = KMeans(n_clusters=n_clusters, random_state=seed, n_init=n_init)
     cluster_labels = km.fit_predict(feats).astype(np.int64)
@@ -255,6 +258,7 @@ def sort_spikes(
 # ---------------------------------------------------------------------------
 # Quality evaluation
 # ---------------------------------------------------------------------------
+
 
 def evaluate_sorting(
     data: SortingData,
@@ -299,10 +303,12 @@ def evaluate_sorting(
 
     sil_mean = float(silhouette_score(wv, cluster_labels))
     neg_sil = neg_silhouette_score(wv, cluster_labels, relative=True)
-    abs_rpvs = rpvs(st, cluster_labels, refractory_period=refractory_period,
-                    relative=False, all_clusters=True)
-    rel_rpvs = rpvs(st, cluster_labels, refractory_period=refractory_period,
-                    relative=True, all_clusters=True)
+    abs_rpvs = rpvs(
+        st, cluster_labels, refractory_period=refractory_period, relative=False, all_clusters=True
+    )
+    rel_rpvs = rpvs(
+        st, cluster_labels, refractory_period=refractory_period, relative=True, all_clusters=True
+    )
     snr_w = calc_weighted_snr(wv, cluster_labels)
 
     snr_per = {}
@@ -388,6 +394,7 @@ def evaluate_os_per_cluster(
 # Full pipeline
 # ---------------------------------------------------------------------------
 
+
 def run_sorting_pipeline(
     data: SortingData,
     n_clusters: int | None = None,
@@ -443,33 +450,42 @@ def run_sorting_pipeline(
     k_search: dict | None = None
     if n_clusters is None:
         n_clusters, k_search = find_optimal_k(
-            data.waveforms, k_range=k_range,
-            rng=seed, n_init=n_init,
-            preprocess=preprocess, pca_components=pca_components,
+            data.waveforms,
+            k_range=k_range,
+            rng=seed,
+            n_init=n_init,
+            preprocess=preprocess,
+            pca_components=pca_components,
         )
 
     # --- 2. Cluster ---
     cluster_labels, km_model = sort_spikes(
-        data.waveforms, n_clusters=n_clusters,
-        rng=seed, n_init=n_init,
-        preprocess=preprocess, pca_components=pca_components,
+        data.waveforms,
+        n_clusters=n_clusters,
+        rng=seed,
+        n_init=n_init,
+        preprocess=preprocess,
+        pca_components=pca_components,
     )
 
     # --- 3. Quality ---
-    quality = evaluate_sorting(data, cluster_labels,
-                               refractory_period=refractory_period)
+    quality = evaluate_sorting(data, cluster_labels, refractory_period=refractory_period)
 
     # --- 4. OS metrics ---
     os_metrics: dict[int, dict] | None = None
     if compute_os and data.angles is not None and len(data.angles) > 0:
         os_metrics = evaluate_os_per_cluster(
-            data, cluster_labels, bin_size=bin_size,
+            data,
+            cluster_labels,
+            bin_size=bin_size,
         )
 
     # --- 5. Plot ---
     if plot:
         plot_sorting_summary(
-            data, cluster_labels, invert_waveforms=invert_waveforms,
+            data,
+            cluster_labels,
+            invert_waveforms=invert_waveforms,
         )
         if k_search is not None:
             plot_k_search(k_search)

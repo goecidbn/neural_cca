@@ -9,21 +9,17 @@ and writes a consolidated zarr store with per-cluster results.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import numpy as np
 
+from .._utils import steps2degree
 from .containers import SortingData
 from .sorting import (
     _as_seed,
-    evaluate_sorting,
-    find_optimal_k,
     run_sorting_pipeline,
-    sort_spikes,
 )
-from .metrics import est_snr
-from .._utils import steps2degree
 
 __all__ = ["batch_sort_experiment"]
 
@@ -101,7 +97,6 @@ def batch_sort_experiment(
         FileNotFoundError: If *data_source* does not exist.
     """
     import xarray as xr
-    import zarr
 
     data_source = Path(data_source)
     if not data_source.exists():
@@ -123,6 +118,7 @@ def batch_sort_experiment(
         exp_metadata = dict(ds.attrs)
     else:
         from visioniceio.experiment import Experiment
+
         exp = Experiment()
         exp.load_from_dir(path=str(data_source), name=name, save_as=None)
         ds = exp.data
@@ -134,9 +130,7 @@ def batch_sort_experiment(
     # ------------------------------------------------------------------
     all_electrodes = ds.electrodes.values
     if electrode_indices is not None:
-        all_electrodes = np.array(
-            [e for e in electrode_indices if e in all_electrodes]
-        )
+        all_electrodes = np.array([e for e in electrode_indices if e in all_electrodes])
 
     # Stimulus angles
     angles = np.array(
@@ -202,6 +196,7 @@ def batch_sort_experiment(
             if compute_sta:
                 try:
                     from ..sta.analysis import minimal_spike_train_analysis
+
                     sta_metrics = {}
                     for cl in np.unique(result.cluster_labels):
                         sta_metrics[int(cl)] = minimal_spike_train_analysis(
@@ -242,13 +237,15 @@ def batch_sort_experiment(
                 for t in range(n_trials):
                     st_by_trial[int(cl)][t] = cl_st[cl_tr == t]
 
-            all_electrode_results.append({
-                "electrode": elec,
-                "result": result,
-                "sta_metrics": sta_metrics,
-                "fr_by_trial": fr_by_trial,
-                "st_by_trial": st_by_trial,
-            })
+            all_electrode_results.append(
+                {
+                    "electrode": elec,
+                    "result": result,
+                    "sta_metrics": sta_metrics,
+                    "fr_by_trial": fr_by_trial,
+                    "st_by_trial": st_by_trial,
+                }
+            )
 
             elec_summary = {
                 "n_clusters": result.n_clusters,
@@ -292,9 +289,7 @@ def batch_sort_experiment(
                 max_spk_per_trial = max(max_spk_per_trial, len(st_arr))
     max_spk_per_trial = max(max_spk_per_trial, 1)
 
-    processed_electrodes = np.array(
-        [r["electrode"] for r in all_electrode_results], dtype=np.int64
-    )
+    processed_electrodes = np.array([r["electrode"] for r in all_electrode_results], dtype=np.int64)
 
     # Allocate arrays.  Use float64 throughout for numerical fidelity:
     # spike times are seconds with microsecond precision, and float32
@@ -304,11 +299,13 @@ def batch_sort_experiment(
     # roundtrip everything as float64.
     spike_times_arr = np.full(
         (n_proc, max_clusters, n_trials, max_spk_per_trial),
-        np.nan, dtype=np.float64,
+        np.nan,
+        dtype=np.float64,
     )
     firing_rates_arr = np.full(
         (n_proc, max_clusters, n_trials),
-        np.nan, dtype=np.float64,
+        np.nan,
+        dtype=np.float64,
     )
     n_clusters_arr = np.zeros(n_proc, dtype=np.int32)
 
@@ -319,7 +316,7 @@ def batch_sort_experiment(
             firing_rates_arr[i, cl_idx, :] = r["fr_by_trial"][cl]
             for t in range(n_trials):
                 st = r["st_by_trial"][cl].get(t, np.array([]))
-                spike_times_arr[i, cl_idx, t, :len(st)] = st
+                spike_times_arr[i, cl_idx, t, : len(st)] = st
 
     out_ds = xr.Dataset(
         data_vars={
@@ -334,11 +331,13 @@ def batch_sort_experiment(
                 attrs={"description": "Firing rate (Hz) per cluster per trial"},
             ),
             "trial_angles": xr.DataArray(
-                angles, dims=("trials",),
+                angles,
+                dims=("trials",),
                 attrs={"description": "Stimulus angle (degrees) per trial"},
             ),
             "n_clusters": xr.DataArray(
-                n_clusters_arr, dims=("electrodes",),
+                n_clusters_arr,
+                dims=("electrodes",),
                 attrs={"description": "Number of clusters per electrode"},
             ),
         },

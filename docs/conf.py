@@ -43,6 +43,15 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "**.ipynb_checkpoints"]
 autosummary_generate = True
 
+# Don't try to document inherited members (avoids autosummary stub spam for
+# TypedDict subclasses such as ``OsMetricsResult``, which would otherwise
+# pull in every inherited ``dict`` method — clear, copy, get, items, …).
+numpydoc_show_inherited_class_members = False
+numpydoc_class_members_toctree = False
+autodoc_default_options = {
+    "inherited-members": False,
+}
+
 # ---- HTML theme --------------------------------------------------------------
 html_theme = "pydata_sphinx_theme"
 html_theme_options = {

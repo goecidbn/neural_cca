@@ -26,6 +26,7 @@ __all__ = [
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _rayleigh_test(angles_rad: npt.NDArray, weights: npt.NDArray) -> float:
     """Rayleigh test *p*-value for non-uniformity of weighted circular data.
 
@@ -47,9 +48,7 @@ def _rayleigh_test(angles_rad: npt.NDArray, weights: npt.NDArray) -> float:
     Z = n * R**2
     # Approximation from Mardia & Jupp (Eq. 5.2.5)
     p = np.exp(-Z) * (
-        1.0
-        + (2 * Z - Z**2) / (4 * n)
-        - (24 * Z - 132 * Z**2 + 76 * Z**3 - 9 * Z**4) / (288 * n**2)
+        1.0 + (2 * Z - Z**2) / (4 * n) - (24 * Z - 132 * Z**2 + 76 * Z**3 - 9 * Z**4) / (288 * n**2)
     )
     return max(0.0, min(1.0, float(p)))
 
@@ -57,6 +56,7 @@ def _rayleigh_test(angles_rad: npt.NDArray, weights: npt.NDArray) -> float:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def dosi_circular_normalised(
     activities: npt.NDArray[np.float64],

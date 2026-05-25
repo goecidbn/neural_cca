@@ -10,18 +10,17 @@ import numpy as np
 import pytest
 
 from neural_cca.tuning.population import (
+    noise_correlations,
     orientation_map_statistics,
     signal_correlations,
-    noise_correlations,
 )
-
 
 # ======================================================================
 # Tests: orientation_map_statistics
 # ======================================================================
 
-class TestOrientationMapStatistics:
 
+class TestOrientationMapStatistics:
     def test_uniform_distribution(self):
         """Uniformly distributed orientations → high Rayleigh p."""
         rng = np.random.default_rng(42)
@@ -70,14 +69,17 @@ class TestOrientationMapStatistics:
 # Tests: signal_correlations
 # ======================================================================
 
-class TestSignalCorrelations:
 
+class TestSignalCorrelations:
     def test_identical_tuning(self):
         """Identical tuning curves → r = 1."""
-        tc = np.array([
-            [10, 5, 2, 5, 10, 5, 2, 5],
-            [10, 5, 2, 5, 10, 5, 2, 5],
-        ], dtype=float)
+        tc = np.array(
+            [
+                [10, 5, 2, 5, 10, 5, 2, 5],
+                [10, 5, 2, 5, 10, 5, 2, 5],
+            ],
+            dtype=float,
+        )
         corr = signal_correlations(tc)
         assert corr[0, 1] == pytest.approx(1.0, abs=1e-10)
 
@@ -85,8 +87,8 @@ class TestSignalCorrelations:
         """Orthogonal tuning → negative signal correlation."""
         # Neuron 1: prefers 0°, Neuron 2: prefers 90°
         angles = np.linspace(0, 360, 8, endpoint=False)
-        tc1 = 2.0 + 10.0 * np.exp(-((angles - 0) ** 2) / (2 * 30 ** 2))
-        tc2 = 2.0 + 10.0 * np.exp(-((angles - 90) ** 2) / (2 * 30 ** 2))
+        tc1 = 2.0 + 10.0 * np.exp(-((angles - 0) ** 2) / (2 * 30**2))
+        tc2 = 2.0 + 10.0 * np.exp(-((angles - 90) ** 2) / (2 * 30**2))
         tc = np.vstack([tc1, tc2])
         corr = signal_correlations(tc)
         assert corr[0, 1] < 0.3  # Should be negative or weakly positive
@@ -108,8 +110,8 @@ class TestSignalCorrelations:
 # Tests: noise_correlations
 # ======================================================================
 
-class TestNoiseCorrelations:
 
+class TestNoiseCorrelations:
     def test_independent_noise(self):
         """Independent noise → correlations near 0."""
         rng = np.random.default_rng(42)

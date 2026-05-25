@@ -36,6 +36,7 @@ __all__ = [
 # Model functions
 # ---------------------------------------------------------------------------
 
+
 def _vm_orientation_model(
     theta: npt.NDArray,
     R0: float,
@@ -82,9 +83,7 @@ def _double_gaussian_model(
     d1 = np.arctan2(np.sin(d1), np.cos(d1))
     d2 = np.arctan2(np.sin(d2), np.cos(d2))
     return (
-        A1 * np.exp(-d1**2 / (2 * sigma**2))
-        + A2 * np.exp(-d2**2 / (2 * sigma**2))
-        + baseline
+        A1 * np.exp(-(d1**2) / (2 * sigma**2)) + A2 * np.exp(-(d2**2) / (2 * sigma**2)) + baseline
     )
 
 
@@ -117,6 +116,7 @@ def _nan_dict(keys: list[str]) -> dict:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def goodness_of_fit(
     observed: npt.ArrayLike,
@@ -211,12 +211,14 @@ def von_mises_fit(
         When ``return_fit=True``, returns ``(dict, fitted_array)``.
     """
     if tuning_type not in ("orientation", "direction"):
-        raise ValueError(
-            f"tuning_type must be 'orientation' or 'direction', got {tuning_type!r}"
-        )
+        raise ValueError(f"tuning_type must be 'orientation' or 'direction', got {tuning_type!r}")
 
     common_keys = [
-        "preferred_angle", "kappa", "baseline", "r_squared", "bandwidth_hwhh",
+        "preferred_angle",
+        "kappa",
+        "baseline",
+        "r_squared",
+        "bandwidth_hwhh",
     ]
     if tuning_type == "orientation":
         keys = common_keys + ["amplitude"]
@@ -258,9 +260,7 @@ def von_mises_fit(
             fitted = _vm_direction_model(theta, *popt)
             pref_deg = wrap360(np.rad2deg(theta0))
             denom = float(A_pref + A_null)
-            ds_ratio = (
-                (float(A_pref) - float(A_null)) / denom if denom != 0 else np.nan
-            )
+            ds_ratio = (float(A_pref) - float(A_null)) / denom if denom != 0 else np.nan
             extra = {
                 "amplitude_pref": float(A_pref),
                 "amplitude_null": float(A_null),
@@ -365,40 +365,54 @@ def tuning_curve_interpolation(
 
     if model == "von_mises_orientation":
         result, fitted = von_mises_fit(
-            responses, angles_deg, tuning_type="orientation", return_fit=True,
+            responses,
+            angles_deg,
+            tuning_type="orientation",
+            return_fit=True,
         )
         if np.all(np.isnan(fitted)):
             return np.nan
         theta_fine = np.linspace(angles_deg.min(), angles_deg.max(), 3600)
         fine_fit = _vm_orientation_model(
             np.deg2rad(theta_fine),
-            result["baseline"], result["amplitude"],
-            result["kappa"], np.deg2rad(result["preferred_angle"]),
+            result["baseline"],
+            result["amplitude"],
+            result["kappa"],
+            np.deg2rad(result["preferred_angle"]),
         )
     elif model == "von_mises_direction":
         result, fitted = von_mises_fit(
-            responses, angles_deg, tuning_type="direction", return_fit=True,
+            responses,
+            angles_deg,
+            tuning_type="direction",
+            return_fit=True,
         )
         if np.all(np.isnan(fitted)):
             return np.nan
         theta_fine = np.linspace(angles_deg.min(), angles_deg.max(), 3600)
         fine_fit = _vm_direction_model(
             np.deg2rad(theta_fine),
-            result["amplitude_pref"], result["amplitude_null"],
-            result["kappa"], np.deg2rad(result["preferred_angle"]),
+            result["amplitude_pref"],
+            result["amplitude_null"],
+            result["kappa"],
+            np.deg2rad(result["preferred_angle"]),
             result["baseline"],
         )
     elif model == "double_gaussian":
         result, fitted = double_gaussian_fit(
-            responses, angles_deg, return_fit=True,
+            responses,
+            angles_deg,
+            return_fit=True,
         )
         if np.all(np.isnan(fitted)):
             return np.nan
         theta_fine = np.linspace(angles_deg.min(), angles_deg.max(), 3600)
         fine_fit = _double_gaussian_model(
             np.deg2rad(theta_fine),
-            result["amp1"], result["amp2"],
-            result["sigma"], np.deg2rad(result["theta0"]),
+            result["amp1"],
+            result["amp2"],
+            result["sigma"],
+            np.deg2rad(result["theta0"]),
             result["baseline"],
         )
     else:

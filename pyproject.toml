@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "neural-cca"
-version = "0.1.1"
+version = "0.1.2"
 description = "Spike sorting, spike train statistics, and orientation selectivity analysis for extracellular recordings"
 requires-python = ">=3.10"
 license = "AGPL-3.0-only"

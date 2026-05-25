@@ -199,7 +199,18 @@ def find_optimal_k(
         ``(best_k, scores)`` where *scores* maps each k to its mean
         silhouette score, both computed in the preprocessed feature
         space.
+
+    Raises:
+        ValueError: When *k_range* contains any value below 2.
+            Silhouette is undefined for a single cluster; to force
+            ``k=1`` use :func:`sort_spikes` directly or pass
+            ``n_clusters=1`` to :func:`run_sorting_pipeline`.  See
+            also the ``min_silhouette`` parameter on
+            :func:`run_sorting_pipeline` for an auto-select policy
+            that *can* fall back to k=1.
     """
+    ks = list(k_range)
+    _reject_k_below_2(ks)
     seed = _as_seed(rng)
     feats = _preprocess_waveforms(
         waveforms,
@@ -208,13 +219,37 @@ def find_optimal_k(
         rng=seed,
     )
     scores: dict[int, float] = {}
-    for k in k_range:
+    for k in ks:
         km = KMeans(n_clusters=k, random_state=seed, n_init=n_init)
         labels = km.fit_predict(feats)
         scores[k] = float(silhouette_score(feats, labels))
 
     best_k = max(scores, key=scores.get)  # type: ignore[arg-type]
     return best_k, scores
+
+
+def _reject_k_below_2(ks: Sequence[int]) -> None:
+    """Refuse silhouette-based k-search for any ``k < 2``.
+
+    Silhouette score is mathematically undefined for a single
+    cluster (sklearn raises ``ValueError`` inside
+    ``silhouette_score`` when the unique-label count is 1), so
+    rather than crash deep in sklearn we surface a clear message
+    pointing at the intended single-cluster path
+    (``run_sorting_pipeline(n_clusters=1)`` or
+    ``sort_spikes(..., n_clusters=1)``) and at the soft fallback
+    (``min_silhouette=`` on ``run_sorting_pipeline``).
+    """
+    bad = sorted(k for k in ks if k < 2)
+    if bad:
+        raise ValueError(
+            f"find_optimal_k requires every k >= 2 (silhouette is "
+            f"undefined for k=1); got k_range containing {bad}. To "
+            "force a single cluster, call run_sorting_pipeline(..., "
+            "n_clusters=1) or sort_spikes(..., n_clusters=1) "
+            "directly.  For auto-selection that can prefer k=1, see "
+            "the `min_silhouette` parameter on run_sorting_pipeline."
+        )
 
 
 def sort_spikes(
@@ -306,10 +341,28 @@ def evaluate_sorting(
             because amplitude is only meaningful in voltage space.
 
     Returns:
-        Dict of metric names to values.
+        Dict of metric names to values.  Keys are uniform across the
+        k=1 and k>=2 paths so downstream schemas (zarr writer, etc.)
+        do not have to special-case the cluster count.  At k=1 the
+        feature-space-separation metrics — ``silhouette_mean``,
+        ``neg_silhouette_rel``, plus the per-cluster
+        ``isolation_distance``, ``l_ratio``, and ``d_prime`` entries —
+        are filled with ``np.nan`` (they are mathematically
+        undefined for a single cluster) and a single
+        :class:`RuntimeWarning` is emitted.  Amplitude / shape /
+        rate metrics remain well-defined and are computed
+        normally.
+
+    Raises:
+        ValueError: When ``cluster_labels`` is empty.
     """
-    if np.unique(cluster_labels).size < 2:
-        raise ValueError("At least 2 clusters are required for evaluation.")
+    n_uniq = int(np.unique(cluster_labels).size)
+    if n_uniq < 1:
+        # Truly no labels — this is not "k=1 with a silent unit", it is
+        # an empty input, so refuse rather than NaN-fill.
+        raise ValueError("cluster_labels is empty.")
+    single_cluster = n_uniq == 1
+
     wv = data.waveforms
     st = data.spike_times
     # Feature-space metrics use ``features`` when provided so they match
@@ -317,8 +370,30 @@ def evaluate_sorting(
     # to ``wv`` keeps the standalone behaviour unchanged.
     feat = wv if features is None else np.asarray(features, dtype=np.float64)
 
-    sil_mean = float(silhouette_score(feat, cluster_labels))
-    neg_sil = neg_silhouette_score(feat, cluster_labels, relative=True)
+    if single_cluster:
+        # Silhouette is undefined for k=1 (sklearn would raise); the
+        # per-cluster feature-space metrics route through existing
+        # NaN-returning guards (``isolation_distance``, ``l_ratio``,
+        # ``d_prime`` already short-circuit when ``len(f_out) == 0``
+        # or ``len(unique) < 2``).  We emit one warning per call so
+        # the user sees the silhouette-class NaNs are by-design, not
+        # a silent failure.
+        warnings.warn(
+            "Evaluating sorting with k=1: silhouette, "
+            "neg_silhouette_rel, isolation_distance, l_ratio, and "
+            "d_prime are undefined for a single cluster and will be "
+            "filled with NaN.  Amplitude-based metrics "
+            "(snr_*, peak_amplitude_snr, waveform_stability, "
+            "amplitude_drift, fraction_missing) and the RPV metrics "
+            "remain well-defined.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        sil_mean = float("nan")
+        neg_sil = float("nan")
+    else:
+        sil_mean = float(silhouette_score(feat, cluster_labels))
+        neg_sil = neg_silhouette_score(feat, cluster_labels, relative=True)
     abs_rpvs = rpvs(
         st, cluster_labels, refractory_period=refractory_period, relative=False, all_clusters=True
     )
@@ -437,6 +512,7 @@ def run_sorting_pipeline(
     invert_waveforms: bool = True,
     preprocess: PreprocessMode = "zscore_pca",
     pca_components: int | float | None = None,
+    min_silhouette: float | None = None,
 ) -> SortingResult:
     """End-to-end spike sorting pipeline.
 
@@ -447,10 +523,43 @@ def run_sorting_pipeline(
         4. (Optional) Compute per-cluster orientation selectivity.
         5. (Optional) Produce a diagnostic summary figure.
 
+    Single-cluster (``k = 1``) mode
+    -------------------------------
+    The pipeline accepts ``n_clusters=1`` as a first-class
+    supported path.  Use it for:
+
+    * **Pre-isolated channels.** Upstream tooling (Kilosort export,
+      manual curation) already restricted a recording to a single
+      unit; ``run_sorting_pipeline(data, n_clusters=1)`` then
+      computes quality + OS metrics on that lone unit *without*
+      re-clustering the waveforms.
+    * **Low-density "trust the channel" recordings** where every
+      channel is taken to be one cell.
+    * **Auto-select fallback.** Setting ``min_silhouette`` triggers
+      a fall-back to ``k = 1`` whenever no candidate in *k_range*
+      beats the threshold — see the parameter description.
+
+    At ``k = 1`` the silhouette-class quality metrics
+    (``silhouette_mean``, ``neg_silhouette_rel``, plus per-cluster
+    ``isolation_distance``, ``l_ratio``, ``d_prime``) are filled
+    with ``np.nan`` and :func:`evaluate_sorting` emits a single
+    :class:`RuntimeWarning` listing exactly which keys are NaN by
+    construction.  Everything else (RPV, SNR, peak-amplitude SNR,
+    waveform stability, amplitude drift, fraction missing, and the
+    full OS-metrics dict if angles are present) is well-defined and
+    computed normally.
+
     Args:
         data: ``SortingData`` container.
-        n_clusters: Fixed cluster count.  ``None`` → auto-select.
-        k_range: Candidate ks when auto-selecting.
+        n_clusters: Fixed cluster count.  ``None`` → auto-select via
+            silhouette over *k_range*.  ``1`` → skip k-search and
+            treat the recording as a single pre-isolated unit (see
+            the section above).  ``>= 2`` → cluster into that many
+            groups directly.
+        k_range: Candidate ks when auto-selecting.  Must start at
+            ``>= 2`` — silhouette is undefined for a single cluster,
+            so ``k = 1`` is never *searched*; it is only ever
+            *chosen* via ``n_clusters=1`` or ``min_silhouette``.
         rng: Generator, int seed, or ``None`` for KMeans reproducibility.
         n_init: KMeans initialisations.
         refractory_period: Refractory period for RPV computation (s).
@@ -464,6 +573,19 @@ def run_sorting_pipeline(
             actual clustering space.
         pca_components: Component count or variance ratio for the PCA
             mode (ignored otherwise).
+        min_silhouette: Soft k-search fallback to ``k = 1``.  When
+            ``None`` (default) auto-select always picks the
+            best-scoring k from *k_range*.  When set, the chosen k
+            from the k-search is overridden with ``1`` if its mean
+            silhouette is below *min_silhouette* — i.e. if the data
+            does not produce a meaningful clustering, the pipeline
+            declines to split it rather than reporting arbitrary
+            halves.  The ``k_search`` dict is still recorded so the
+            user can see which candidate was tried and what its
+            score was.  Only consulted when *n_clusters* is
+            ``None``.  Reasonable values lie around ``0.05``–``0.2``;
+            anything below ``0`` makes the fallback impossible
+            (silhouette is bounded below by −1).
 
     Returns:
         ``SortingResult`` with all outputs.
@@ -477,7 +599,13 @@ def run_sorting_pipeline(
         ``waveform_stability``, ``amplitude_drift``,
         ``fraction_missing``) are always computed on raw
         ``data.waveforms`` because amplitude is only meaningful in
-        voltage space.
+        voltage space.  See the section above for the ``k = 1``
+        behaviour.
+
+        ``metadata`` records ``min_silhouette`` and the boolean
+        ``min_silhouette_triggered`` so a downstream consumer can
+        tell whether the chosen k came from the silhouette argmax
+        or from the threshold fallback.
     """
     # Coerce rng once so all downstream sklearn calls share the same seed
     # (and so the metadata reflects what was actually used).
@@ -496,6 +624,7 @@ def run_sorting_pipeline(
 
     # --- 1. Determine k ---
     k_search: dict | None = None
+    min_silhouette_triggered = False
     if n_clusters is None:
         n_clusters, k_search = _find_optimal_k_from_features(
             features,
@@ -503,8 +632,21 @@ def run_sorting_pipeline(
             seed=seed,
             n_init=n_init,
         )
+        # Soft fallback: if the best silhouette in ``k_range`` did not
+        # clear ``min_silhouette``, declare a single cluster.  This is
+        # the canonical "data has no separable structure → don't
+        # invent any" guard.  We keep ``k_search`` populated so the
+        # user can see what was actually tried; the fact that we did
+        # *not* pick its argmax is recorded in
+        # ``min_silhouette_triggered``.
+        if min_silhouette is not None and k_search and k_search[n_clusters] < float(min_silhouette):
+            n_clusters = 1
+            min_silhouette_triggered = True
 
     # --- 2. Cluster ---
+    # ``KMeans(n_clusters=1)`` is valid sklearn: it returns all-zeros
+    # labels and an inertia of the within-data sum of squares to the
+    # global mean.  No special-casing required here.
     km = KMeans(n_clusters=n_clusters, random_state=seed, n_init=n_init)
     cluster_labels = km.fit_predict(features).astype(np.int64)
     km_model = km
@@ -518,6 +660,8 @@ def run_sorting_pipeline(
     )
 
     # --- 4. OS metrics ---
+    # ``evaluate_os_per_cluster`` iterates ``np.unique(cluster_labels)``,
+    # so the k=1 case naturally returns ``{0: <metrics>}``.
     os_metrics: dict[int, dict] | None = None
     if compute_os and data.angles is not None and len(data.angles) > 0:
         os_metrics = evaluate_os_per_cluster(
@@ -528,6 +672,9 @@ def run_sorting_pipeline(
         )
 
     # --- 5. Plot ---
+    # ``plot_sorting_summary`` already wraps the single-cluster case
+    # (``n_cl == 1`` → ``subfigs = [subfigs]``); plotting at k=1 is
+    # one row with two/three panels and just works.
     if plot:
         plot_sorting_summary(
             data,
@@ -550,6 +697,8 @@ def run_sorting_pipeline(
             "kmeans_inertia": float(km_model.inertia_),
             "preprocess": preprocess,
             "pca_components": pca_components,
+            "min_silhouette": (float(min_silhouette) if min_silhouette is not None else None),
+            "min_silhouette_triggered": bool(min_silhouette_triggered),
         },
     )
 
@@ -564,10 +713,14 @@ def _find_optimal_k_from_features(
 
     Used by :func:`run_sorting_pipeline` so the preprocessing happens
     exactly once.  Public callers should keep using
-    :func:`find_optimal_k`, which preprocesses internally.
+    :func:`find_optimal_k`, which preprocesses internally.  The same
+    ``k >= 2`` guard is enforced here so the pipeline's auto-select
+    path produces the same error message as the standalone helper.
     """
+    ks = list(k_range)
+    _reject_k_below_2(ks)
     scores: dict[int, float] = {}
-    for k in k_range:
+    for k in ks:
         km = KMeans(n_clusters=k, random_state=seed, n_init=n_init)
         labels = km.fit_predict(features)
         scores[k] = float(silhouette_score(features, labels))

@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `sorting/sorting.py`: ``run_sorting_pipeline(n_clusters=1)`` is now
+  a first-class supported path for pre-isolated single-unit channels
+  (Kilosort export, manual curation, "trust the channel" recordings).
+  ``evaluate_sorting`` accepts k=1, fills ``silhouette_mean``,
+  ``neg_silhouette_rel`` and the per-cluster ``isolation_distance``
+  / ``l_ratio`` / ``d_prime`` entries with ``np.nan``, and emits a
+  single ``RuntimeWarning`` listing exactly which keys are NaN by
+  construction.  Amplitude, RPV, and OS metrics remain well-defined.
+- `sorting/sorting.py`: ``run_sorting_pipeline(... min_silhouette=...)``
+  — soft auto-select fallback to k=1.  When the best silhouette in
+  ``k_range`` is below the threshold the pipeline declines to split
+  the data rather than reporting arbitrary halves.  ``k_search``
+  is still populated so the user can audit the search; the boolean
+  ``min_silhouette_triggered`` flag is recorded in ``metadata``.
+- `tests/test_sorting_preprocess.py`: new ``TestSingleCluster``
+  class covering ``n_clusters=1`` end-to-end (quality, OS metrics,
+  zarr round-trip via both layouts), the ``find_optimal_k`` /
+  pipeline ``k_range`` guard, and the ``min_silhouette`` fallback
+  with both positive (triggers) and negative (doesn't trigger)
+  cases.
 - `neural_cca/synthetic.py`: new public module that owns all
   synthetic spike-train and waveform generation used by the four
   example notebooks and the test fixtures. Public helpers:
@@ -44,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `sorting/sorting.py`: ``find_optimal_k`` (and the pipeline-internal
+  ``_find_optimal_k_from_features``) now raise ``ValueError`` when
+  any ``k < 2`` appears in ``k_range``.  Before, the call crashed
+  deep inside sklearn's ``silhouette_score``; the new message points
+  at ``run_sorting_pipeline(n_clusters=1)`` and the ``min_silhouette``
+  fallback as the intended single-cluster paths.
 - `tests/test_tuning_statistics.py`: alphabetised the in-function
   imports in `TestEvaluateOsPerClusterRng::test_integer_seed_advances_across_clusters`
   to satisfy `ruff check` (I001).
@@ -147,6 +173,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comment on the in-function `_per_trial_isis` import with the actual
   reason (underscore-private helper, deliberately not promoted to the
   module-top barrel).
+- `examples/example_sorting_pipeline.ipynb` and
+  `examples/example_spike_sorting.ipynb`: new "Single-cluster mode
+  (`n_clusters=1`)" subsection showing the pre-isolated single-unit
+  channel path on the synthetic demo data — one warning-catching cell
+  that splits the quality dict into numeric vs. NaN-by-construction
+  entries and verifies the OS metrics still compute on the lone
+  unit, plus a paired `min_silhouette=0.99` cell exercising the soft
+  auto-fallback to k=1.
 
 ### Internal
 

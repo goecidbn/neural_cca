@@ -181,6 +181,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entries and verifies the OS metrics still compute on the lone
   unit, plus a paired `min_silhouette=0.99` cell exercising the soft
   auto-fallback to k=1.
+- `docs/api/sorting.rst`, `docs/api/sta.rst`, `docs/api/tuning.rst`,
+  `docs/api/synthetic.rst`: each module page now opens with a
+  narrative *Overview* + *Scientific scope* section before the
+  auto-doc API reference, so a first-time reader gets the
+  algorithmic story (clustering pipeline + quality-metric families
+  for sorting; trial-aware ISI accounting and the metric catalogue
+  for sta; selectivity / fitting / harmonic / population blocks for
+  tuning; Poisson-with-refractory and the two-unit demo for
+  synthetic) before being dropped into the function signatures.
+- `docs/index.rst`: new "Institutions & Funding" block at the bottom
+  of the landing page with CIDBN and Niedersächsisches Ministerium
+  für Wissenschaft und Kultur (MWK) logos and links — mirrors the
+  layout used by the sibling
+  [`pynamicgain`](https://goecidbn.github.io/pynamicgain/) docs so
+  CIDBN packages render their funding section consistently.
+  `docs/_static/custom.css` carries the `.logo-grid` flexbox rules;
+  `html_css_files = ["custom.css"]` registered in `conf.py`.
+- `neural_cca/sorting/metrics.py`: expanded the
+  `_ledoit_wolf_precision` docstring with the closed-form shrinkage
+  formula, the small-:math:`n` / large-:math:`p` regime that makes
+  it the right estimator for spike-sorting feature matrices, and
+  primary references (Ledoit & Wolf 2004, Schmitzer-Torbert et al.
+  2005, Hill et al. 2011).  Behaviour is unchanged.
 
 ### Internal
 

@@ -1,0 +1,32 @@
+/* Custom CSS overrides for the neural_cca documentation. */
+
+/* ── Logo grid (institutions & funding) ───────────────────────────── */
+/*
+ * Mirrors the pynamicgain landing-page layout so the two sibling
+ * CIDBN packages render their funding section consistently.
+ */
+.logo-grid {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+    margin: 1.5rem 0;
+}
+
+.logo-grid a {
+    display: inline-flex;
+    align-items: center;
+}
+
+.logo-grid img {
+    height: 55px;
+    width: auto;
+    object-fit: contain;
+    opacity: 0.85;
+    transition: opacity 0.2s ease;
+}
+
+.logo-grid img:hover {
+    opacity: 1;
+}

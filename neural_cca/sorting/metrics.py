@@ -294,25 +294,87 @@ def _mahalanobis_sq(
 
 
 def _ledoit_wolf_precision(features: npt.NDArray) -> npt.NDArray:
-    """Ledoit–Wolf shrunk covariance, returned as its inverse (precision).
+    r"""Ledoit–Wolf shrunk covariance, returned as its inverse (precision).
 
-    The Ledoit–Wolf estimator linearly shrinks the sample covariance
-    toward a scaled identity, with the shrinkage intensity chosen
-    analytically to minimise expected MSE.  This is the standard fix
-    for ill-conditioned sample covariances when the number of samples
-    is comparable to or smaller than the feature dimension — exactly
-    the regime in which spike-sorting feature matrices live (clusters
-    of a few hundred spikes in a 12–32 dimensional PCA space).
+    The Ledoit–Wolf estimator (Ledoit & Wolf, 2004) returns a convex
+    combination of the sample covariance :math:`S` and a scaled
+    identity target :math:`F = \mu I` with :math:`\mu = \mathrm{tr}(S)/p`:
 
-    Replaces ``np.linalg.pinv(np.cov(X, rowvar=False))``, which silently
-    discards eigenvalues below the pinv tolerance and produces unstable
-    Mahalanobis distances on small or near-degenerate clusters.
+    .. math::
+
+        \hat{\Sigma}_\mathrm{LW} = (1 - \rho^*)\,S + \rho^*\,F,
+        \quad \rho^* \in [0, 1].
+
+    The shrinkage intensity :math:`\rho^*` is *not* a free hyperparameter
+    — it has a closed-form optimum
+
+    .. math::
+
+        \rho^* = \min\!\Bigl(1,\;
+            \frac{\pi^* - \rho^*_S}{\gamma^* \cdot n}
+        \Bigr),
+
+    where :math:`\pi^*` estimates the sum of asymptotic variances of
+    :math:`\sqrt{n}\,\mathrm{vec}(S - \Sigma)`, :math:`\rho^*_S`
+    estimates its covariance with :math:`\mathrm{vec}(F - \Sigma)`,
+    and :math:`\gamma^* = \lVert F - \Sigma \rVert_\mathrm{Fro}^2`
+    measures how far the shrinkage target sits from the truth.
+    The estimator therefore *adapts* :math:`\rho^*` to the data:
+    abundant well-conditioned samples push :math:`\rho^* \to 0`
+    (use :math:`S`); few samples or near-degenerate spectra push
+    :math:`\rho^* \to 1` (use the identity target).  The result is
+    the unique linear combination that minimises the expected
+    Frobenius-norm error :math:`\mathbb{E}\lVert \hat{\Sigma} - \Sigma
+    \rVert_\mathrm{Fro}^2` to first order in :math:`n^{-1}`.
+
+    **Why this matters here.**  Spike-sorting feature matrices sit
+    squarely in the small-:math:`n` / large-:math:`p` regime that
+    breaks the sample covariance: a cluster of a few hundred spikes
+    in a 12–32-dimensional PCA space gives :math:`n/p \approx 10`,
+    so :math:`S` has the right rank but its smallest eigenvalues are
+    biased toward zero by a factor :math:`(1 - p/n)^{-1}` and the
+    precision matrix :math:`S^{-1}` blows them up.  Mahalanobis
+    distances computed with :math:`S^{-1}` then over-weight the
+    noisy directions and the resulting :func:`isolation_distance` /
+    :func:`l_ratio` values jump around between clusters of similar
+    quality.  Shrinking toward :math:`\mu I` regularises the
+    spectrum without introducing a tunable parameter, which is the
+    standard fix in the spike-sorting literature
+    (e.g. Schmitzer-Torbert et al. 2005, Hill et al. 2011).
+
+    The implementation delegates to
+    :class:`sklearn.covariance.LedoitWolf` and returns the
+    precision (``estimator.precision_``) directly, which is what the
+    Mahalanobis-distance helpers consume.  Compared to the previous
+    ``np.linalg.pinv(np.cov(X, rowvar=False))`` path, Ledoit–Wolf
+    avoids silently discarding eigenvalues below the pinv tolerance
+    (the discard threshold scales with the largest eigenvalue and
+    therefore varies across clusters in a way that's invisible to
+    the caller) and produces strictly positive-definite precision
+    matrices for any non-trivial cluster.
 
     References:
-        Ledoit, O. & Wolf, M. (2004).  *A well-conditioned estimator
-        for large-dimensional covariance matrices*.  Journal of
+        Ledoit, O. & Wolf, M. (2004). *A well-conditioned estimator
+        for large-dimensional covariance matrices*. Journal of
         Multivariate Analysis, 88(2), 365–411.
+        doi:10.1016/S0047-259X(03)00096-4.
+
+        Schmitzer-Torbert, N., Jackson, J., Henze, D., Harris, K. &
+        Redish, A. D. (2005). *Quantitative measures of cluster
+        quality for use in extracellular recordings*. Neuroscience,
+        131(1), 1–11.
+
+        Hill, D. N., Mehta, S. B. & Kleinfeld, D. (2011).
+        *Quality metrics to accompany spike sorting of
+        extracellular signals*. Journal of Neuroscience, 31(24),
+        8699–8705.
     """
+    # ``store_precision=True`` makes sklearn cache the matrix-inverse
+    # alongside the covariance, so a downstream Mahalanobis-distance
+    # call reads ``estimator.precision_`` directly without a second
+    # matrix inversion.  ``assume_centered=False`` lets the estimator
+    # subtract the cluster mean internally — we hand it the raw
+    # feature rows, not centred residuals.
     estimator = LedoitWolf(store_precision=True, assume_centered=False)
     estimator.fit(features)
     return estimator.precision_

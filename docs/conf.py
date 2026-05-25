@@ -66,6 +66,9 @@ html_theme_options = {
 }
 html_static_path = ["_static"]
 html_favicon = "_static/favicons/favicon.ico"
+# Custom CSS — at the moment only carries the ``.logo-grid`` rules used
+# by the "Institutions & Funding" block on the landing page.
+html_css_files = ["custom.css"]
 
 # ---- Intersphinx -------------------------------------------------------------
 intersphinx_mapping = {

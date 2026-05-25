@@ -69,3 +69,24 @@ Quick start
    api/index
    developer
    changelog
+
+
+----------------
+
+Institutions & Funding
+======================
+
+.. raw:: html
+
+   <div class="logo-grid">
+     <a href="https://uni-goettingen.de/en/608362.html" target="_blank">
+       <img src="_static/logo_cidbn.jpg" alt="CIDBN / University of Göttingen" />
+     </a>
+     <a href="https://www.mwk.niedersachsen.de/startseite/" target="_blank">
+       <img src="_static/logo_mwk.png" alt="Niedersächsisches Ministerium für Wissenschaft und Kultur" />
+     </a>
+   </div>
+
+The developer team is part of the `Göttingen Campus Institute for Dynamics of Biological Networks (CIDBN) <https://uni-goettingen.de/en/608362.html>`_.
+This project is partially supported by the
+`Niedersächsisches Ministerium für Wissenschaft und Kultur (MWK) <https://www.mwk.niedersachsen.de/startseite/>`_.

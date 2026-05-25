@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `examples/example_sorting_pipeline.ipynb`: removed orphaned bernoulli-train
+  code after `poisson_train`'s return — left over from a copy-paste, was a
+  hard `SyntaxError` when the cell was parsed.
+- `sta/analysis.py`: `trial_to_trial_reliability` docstring used `|R|`,
+  which docutils interpreted as a substitution reference and Sphinx
+  promoted to an error. Now `:math:`|R|``.
+- `sorting/metrics.py`: `fraction_missing` docstring referenced a
+  nonexistent `known_issues` page via `:doc:`. Inlined the alternative-
+  estimator suggestion instead.
+- `tests/test_tuning.py`: removed dead assignment to `angles` in
+  `TestCalcMfrTrial::test_known_rate`.
+
+### Documentation
+
+- Removed the fictitious "sum-of-von-Mises" curve-fit claim from
+  README and from the [0.1.0] changelog entry — no such function
+  exists in `neural_cca.tuning.fitting`; the closest is the internal
+  two-bump `_vm_direction_model` used inside `von_mises_fit`.
+- `docs/conf.py`: silenced inherited `dict`-method autosummary stubs
+  for the `OsMetricsResult` `TypedDict` subclass via
+  `numpydoc_show_inherited_class_members = False` and
+  `autodoc_default_options = {"inherited-members": False}`.
+- `docs/api/sorting.rst`: split `SortingData` / `SortingResult` into a
+  dedicated `containers` section and excluded them from `io_util`'s
+  documented members to remove the duplicate-description warning.
+- `sorting/io_util.py`: docstring previously pointed at the
+  nonexistent `visioniceio.sorting_io.load_from_visioniceio`. Now
+  points at `vision_ice_analysis.load_from_visioniceio` (the bridge).
+
+### Internal
+
+- `pyproject.toml` ruff: ignore `N803`/`N806` (scientific naming
+  convention — `A`, `R0`, `X`, `Y`, …). Per-file ignores for
+  `neural_cca/__init__.py` (re-export barrel), `examples/*.ipynb`
+  (notebook reality), `tests/*.py` (long assertions,
+  `pytest.importorskip` patterns).
+- Auto-applied `ruff check --fix` (45 fixes, mostly import sort) and
+  `ruff format` (30 files).
+- Renamed bundled logos: `logo_mini_analysis_cidbn_wide.svg` →
+  `logo_neural_cca_wide.svg`, `logo_mini_analysis.svg` →
+  `logo_neural_cca.svg`; updated `docs/conf.py` reference.
+
 ## [0.1.0] - 2026-03-08
 
 ### Added
@@ -16,8 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fraction missing.
 - Orientation / direction selectivity: DOSI, gOSI, gDSI, circular variance,
   preferred orientation, tuning bandwidth.
-- Tuning-curve fitting: von Mises, double Gaussian, sum-of-von-Mises, with
-  interpolation and goodness-of-fit (R²).
+- Tuning-curve fitting: von Mises (with internal two-bump direction
+  variant) and double Gaussian, with interpolation and
+  goodness-of-fit (R²).
 - F0/F1/F2 harmonic analysis, modulation ratios per orientation,
   cross-orientation suppression.
 - Temporal-frequency tuning and F1-phase analysis.

@@ -29,7 +29,7 @@ Single-unit and multi-unit spike train statistics covering firing rate, variabil
 Comprehensive orientation/direction tuning analysis for visual neuroscience experiments.
 
 - **Selectivity indices**: OSI, DSI (circular vector-sum), gOSI, gDSI (ratio-based), circular variance — all with optional Rayleigh-test p-values
-- **Curve fitting**: von Mises, double Gaussian, sum-of-von-Mises fits with R² goodness-of-fit and interpolated preferred orientation
+- **Curve fitting**: von Mises (with internal two-bump direction variant) and double Gaussian fits with R² goodness-of-fit and interpolated preferred orientation
 - **Harmonic analysis**: F0/F1/F2 decomposition, F1 phase extraction, modulation ratio per orientation, simple/complex cell classification
 - **Temporal frequency**: TF tuning curves with log-Gaussian fit, preferred TF, bandwidth
 - **Cross-orientation**: suppression index (proxy from tuning curve)

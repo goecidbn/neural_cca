@@ -532,7 +532,7 @@ def test_fraction_missing_warns_on_bimodal():
 ```python
 class TestMinimalSpikeTrainAnalysis:
     def test_regular_train(self, regular_spike_train):
-        from neural_cca.sta.analysis import minimal_spike_train_analysis
+        from neural_cca.spike_train.analysis import minimal_spike_train_analysis
         fx = regular_spike_train
         result = minimal_spike_train_analysis(
             fx["spikes"],
@@ -543,7 +543,7 @@ class TestMinimalSpikeTrainAnalysis:
         assert result["lvr"] == pytest.approx(0.0, abs=1e-9)
 
     def test_poisson_train(self, poisson_spike_train):
-        from neural_cca.sta.analysis import minimal_spike_train_analysis
+        from neural_cca.spike_train.analysis import minimal_spike_train_analysis
         fx = poisson_spike_train
         result = minimal_spike_train_analysis(
             fx["spikes"],
@@ -553,7 +553,7 @@ class TestMinimalSpikeTrainAnalysis:
         assert result["cv"] == pytest.approx(1.0, abs=0.10)
 
     def test_gamma_train_cv(self, gamma_spike_train):
-        from neural_cca.sta.analysis import minimal_spike_train_analysis
+        from neural_cca.spike_train.analysis import minimal_spike_train_analysis
         fx = gamma_spike_train
         result = minimal_spike_train_analysis(
             fx["spikes"],
@@ -563,7 +563,7 @@ class TestMinimalSpikeTrainAnalysis:
 
     def test_lvr_refractory_forwarded(self, regular_spike_train):
         """Regression: refractory_period must be forwarded into _compute_lvr."""
-        from neural_cca.sta.analysis import minimal_spike_train_analysis
+        from neural_cca.spike_train.analysis import minimal_spike_train_analysis
         fx = regular_spike_train
         r1 = minimal_spike_train_analysis(
             fx["spikes"], n_trials=1, trial_length=fx["duration"],
@@ -583,7 +583,7 @@ class TestMinimalSpikeTrainAnalysis:
 
 ```python
 def test_calc_mfr_trial_exact(trial_spikes_regular):
-    from neural_cca.sta.analysis import calc_mfr_trial
+    from neural_cca.spike_train.analysis import calc_mfr_trial
     fx = trial_spikes_regular
     result = calc_mfr_trial(
         fx["spikes"], fx["trials"],
@@ -600,7 +600,7 @@ def test_calc_mfr_trial_exact(trial_spikes_regular):
 
 ```python
 def test_isi_violation_rate_known_count():
-    from neural_cca.sta.analysis import isi_violation_rate
+    from neural_cca.spike_train.analysis import isi_violation_rate
     base = np.arange(0.0, 1.0, 0.01)         # 100 spikes, 10 ms ISIs
     extra = base[:3] + 0.0005                # 3 sub-1ms violations
     spikes = np.sort(np.concatenate([base, extra]))
@@ -618,7 +618,7 @@ def test_isi_violation_rate_known_count():
 ```python
 class TestFiringRateStability:
     def test_constant_rate_zero_cv(self, trial_spikes_regular):
-        from neural_cca.sta.analysis import firing_rate_stability
+        from neural_cca.spike_train.analysis import firing_rate_stability
         fx = trial_spikes_regular
         result = firing_rate_stability(
             fx["spikes"], fx["trials"],
@@ -630,7 +630,7 @@ class TestFiringRateStability:
 
     def test_lvr_refractory_forwarded(self, poisson_spike_train):
         """Regression: refractory_period must be forwarded to _compute_lvr."""
-        from neural_cca.sta.analysis import firing_rate_stability
+        from neural_cca.spike_train.analysis import firing_rate_stability
         fx = poisson_spike_train
         trials = np.zeros(len(fx["spikes"]), dtype=np.int64)
         r1 = firing_rate_stability(
@@ -652,7 +652,7 @@ class TestFiringRateStability:
 class TestAutocorrelogram:
     def test_periodic_train_peak_at_period(self):
         """Periodic spikes at 100 Hz → ACG peak at 10 ms."""
-        from neural_cca.sta.analysis import autocorrelogram
+        from neural_cca.spike_train.analysis import autocorrelogram
         rate = 100.0
         spikes = np.arange(0.0, 5.0, 1.0 / rate)  # period = 10 ms
         lags, counts = autocorrelogram(spikes, bin_size=0.001, max_lag=0.05)
@@ -661,7 +661,7 @@ class TestAutocorrelogram:
 
     def test_zero_lag_excluded(self):
         """No spike pair can land at lag 0 (loop excludes self-pairs)."""
-        from neural_cca.sta.analysis import autocorrelogram
+        from neural_cca.spike_train.analysis import autocorrelogram
         spikes = np.array([0.0, 0.005, 0.010, 0.015])  # 5 ms ISIs
         lags, counts = autocorrelogram(spikes, bin_size=0.001, max_lag=0.02)
         zero_bin_idx = int(np.argmin(np.abs(lags)))
@@ -669,7 +669,7 @@ class TestAutocorrelogram:
 
     def test_symmetric_about_zero(self):
         """ACG must be symmetric about lag 0 (every diff has its mirror)."""
-        from neural_cca.sta.analysis import autocorrelogram
+        from neural_cca.spike_train.analysis import autocorrelogram
         rng = np.random.default_rng(20260406)
         spikes = np.sort(rng.uniform(0, 5.0, 200))
         lags, counts = autocorrelogram(spikes, bin_size=0.001, max_lag=0.05)
@@ -691,13 +691,13 @@ class TestAutocorrelogram:
 ```python
 class TestFanoFactor:
     def test_poisson_one(self, poisson_spike_train):
-        from neural_cca.sta.analysis import fano_factor
+        from neural_cca.spike_train.analysis import fano_factor
         fx = poisson_spike_train
         ff = fano_factor(fx["spikes"], trial_length=fx["duration"], bin_size=0.1)
         assert ff == pytest.approx(1.0, abs=0.20)
 
     def test_regular_zero(self, regular_spike_train):
-        from neural_cca.sta.analysis import fano_factor
+        from neural_cca.spike_train.analysis import fano_factor
         fx = regular_spike_train
         ff = fano_factor(fx["spikes"], trial_length=fx["duration"], bin_size=0.1)
         assert ff < 0.05
@@ -709,12 +709,12 @@ class TestFanoFactor:
 
 ```python
 def test_local_variation_regular_zero(regular_spike_train):
-    from neural_cca.sta.analysis import local_variation
+    from neural_cca.spike_train.analysis import local_variation
     lv = local_variation(regular_spike_train["spikes"])
     assert lv == pytest.approx(0.0, abs=1e-9)
 
 def test_local_variation_poisson_one(poisson_spike_train):
-    from neural_cca.sta.analysis import local_variation
+    from neural_cca.spike_train.analysis import local_variation
     lv = local_variation(poisson_spike_train["spikes"])
     assert lv == pytest.approx(1.0, abs=0.10)
 ```
@@ -726,7 +726,7 @@ def test_local_variation_poisson_one(poisson_spike_train):
 ```python
 def test_cv_log_isi_lognormal_known_cv():
     """Lognormal ISIs with known σ_log → CV(log ISI) = σ_log / |μ_log|."""
-    from neural_cca.sta.analysis import cv_log_isi
+    from neural_cca.spike_train.analysis import cv_log_isi
     rng = np.random.default_rng(20260406)
     mu_log, sigma_log = -3.0, 0.5  # in log seconds
     isis = np.exp(rng.normal(mu_log, sigma_log, 5_000))
@@ -737,7 +737,7 @@ def test_cv_log_isi_lognormal_known_cv():
 
 def test_cv_log_isi_near_zero_mean_returns_nan():
     """Regression: ISIs clustered near 1 s give |mean log ISI| → 0."""
-    from neural_cca.sta.analysis import cv_log_isi
+    from neural_cca.spike_train.analysis import cv_log_isi
     rng = np.random.default_rng(20260406)
     isis = np.exp(rng.normal(0.0, 1e-15, 100))  # mean log ISI essentially 0
     spikes = np.cumsum(isis)
@@ -752,7 +752,7 @@ def test_cv_log_isi_near_zero_mean_returns_nan():
 ```python
 def test_psth_uniform_rate_constant_bins():
     """Inject N spikes per trial uniformly → constant per-bin firing rate."""
-    from neural_cca.sta.analysis import psth
+    from neural_cca.spike_train.analysis import psth
     n_trials = 50
     n_per_trial = 25
     trial_dur = 2.5
@@ -771,7 +771,7 @@ def test_psth_uniform_rate_constant_bins():
 
 def test_psth_bin_widths_uniform():
     """Regression: bin edges must be exactly evenly spaced (linspace, not arange)."""
-    from neural_cca.sta.analysis import psth
+    from neural_cca.spike_train.analysis import psth
     spikes = np.array([0.5, 1.0, 1.5, 2.0])
     trials = np.zeros(4, dtype=np.int64)
     centres, rate = psth(spikes, trials, bin_size=0.01, trial_length=2.5)
@@ -787,7 +787,7 @@ def test_psth_bin_widths_uniform():
 class TestTrialToTrialReliability:
     def test_identical_trials_one(self):
         """Same PSTH on every trial → reliability = 1.0."""
-        from neural_cca.sta.analysis import trial_to_trial_reliability
+        from neural_cca.spike_train.analysis import trial_to_trial_reliability
         n_trials = 30
         rel = np.array([0.5, 0.7, 0.9, 1.1, 1.3])  # spike pattern
         spikes = np.tile(rel, n_trials)
@@ -798,7 +798,7 @@ class TestTrialToTrialReliability:
 
     def test_random_trials_low(self):
         """Independent random trials → reliability ~ 0."""
-        from neural_cca.sta.analysis import trial_to_trial_reliability
+        from neural_cca.spike_train.analysis import trial_to_trial_reliability
         rng = np.random.default_rng(20260406)
         n_trials = 30
         spikes = []
@@ -814,7 +814,7 @@ class TestTrialToTrialReliability:
 
     def test_f1_phase_consistent(self):
         """All trials with same F1 phase → reliability = 1.0."""
-        from neural_cca.sta.analysis import trial_to_trial_reliability
+        from neural_cca.spike_train.analysis import trial_to_trial_reliability
         # Build PSTHs by hand: each trial is exactly cos(2πft) phase 0
         # ... use a synthetic harmonic_psth-style construction per trial
         pytest.skip("Construct synthetic phase-locked spike trains")
@@ -827,7 +827,7 @@ class TestTrialToTrialReliability:
 ```python
 def test_trial_to_trial_correlation_matrix_identical_trials():
     """Same trial repeated → matrix of all 1.0 (diagonal + off-diagonal)."""
-    from neural_cca.sta.analysis import trial_to_trial_correlation_matrix
+    from neural_cca.spike_train.analysis import trial_to_trial_correlation_matrix
     n_trials = 10
     rel = np.array([0.5, 0.7, 0.9, 1.1, 1.3])
     spikes = np.tile(rel, n_trials)
@@ -845,7 +845,7 @@ def test_trial_to_trial_correlation_matrix_identical_trials():
 
 ```python
 def test_first_spike_latency_known(trial_spikes_regular):
-    from neural_cca.sta.analysis import first_spike_latency
+    from neural_cca.spike_train.analysis import first_spike_latency
     fx = trial_spikes_regular
     result = first_spike_latency(
         fx["spikes"], fx["trials"], stim_onset=fx["stim_onset"],

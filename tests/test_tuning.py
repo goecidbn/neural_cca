@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from neural_cca._utils import guarded_divide, steps2degree
-from neural_cca.sta.analysis import calc_mfr_trial
+from neural_cca.spike_train.analysis import calc_mfr_trial
 from neural_cca.tuning.selectivity import circular_variance, dosi_circular_normalised
 from neural_cca.tuning.tuning import (
     compute_f0_f1_f2,

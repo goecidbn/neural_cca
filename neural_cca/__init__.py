@@ -1,8 +1,10 @@
-"""Unified spike sorting, STA, and tuning analysis for extracellular recordings.
+"""Unified spike sorting, spike-train statistics, and tuning analysis.
 
 Subpackages:
     sorting: Spike clustering, quality metrics, batch processing.
-    sta: Spike train statistics (MFR, CV, LvR, PSTH, ACG, etc.).
+    spike_train: Spike-train statistics (MFR, CV, LvR, PSTH, ACG, etc.).
+        Previously called ``sta``; the old import path is a
+        deprecation shim retained for backwards compatibility.
     tuning: Orientation selectivity and tuning curves.
 
 Convenience re-exports allow both::
@@ -50,6 +52,7 @@ from .sorting import (
     amplitude_drift,
     # Batch driver
     batch_sort_experiment,
+    contamination_rate_hill,
     d_prime,
     d_prime_pairwise_matrix,
     evaluate_os_per_cluster,
@@ -77,13 +80,14 @@ from .sorting import (
     to_zarr_flat,
     waveform_stability,
 )
-from .sta import (
+from .spike_train import (
     autocorrelogram,
     calc_mfr_trial,
     cv_log_isi,
     fano_factor,
     firing_rate_stability,
     first_spike_latency,
+    first_spike_latency_thresholded,
     # Spike train analyses
     isi_violation_rate,
     local_variation,
@@ -117,6 +121,7 @@ from .tuning import (
     # selectivity
     dosi_circular_normalised,
     double_gaussian_fit,
+    dsi_two_point,
     f1_phase,
     gdsi,
     get_os_metrics,
@@ -131,6 +136,7 @@ from .tuning import (
     orientation_scatter_vm,
     # statistics
     orientation_selectivity_significance,
+    osi_two_point,
     plot_direction_polar,
     plot_f1_phase,
     plot_f1f0_bars,

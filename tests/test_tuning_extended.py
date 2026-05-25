@@ -16,8 +16,10 @@ from neural_cca.tuning.modulation import (
 from neural_cca.tuning.selectivity import (
     circular_variance,
     dosi_circular_normalised,
+    dsi_two_point,
     gdsi,
     gosi,
+    osi_two_point,
 )
 from neural_cca.tuning.temporal import (
     f1_phase,
@@ -89,6 +91,49 @@ class TestCircularVariancePValue:
         assert isinstance(result, dict)
         assert "value" in result
         assert 0 <= result["value"] <= 1
+
+
+class TestTwoPointFamily:
+    """Sanity tests for the Niell & Stryker (2008) two-point variants.
+
+    After the 0.2.0 rename, ``osi_two_point`` / ``dsi_two_point`` are
+    the (R_pref - R_orth)/(R_pref + R_orth) ratios and ``gosi`` /
+    ``gdsi`` are the vector-sum (global) forms.  Both families should
+    rank tuned vs untuned cells the same way.
+    """
+
+    def test_two_point_osi_tuned(self):
+        angles = np.linspace(0, 360, 12, endpoint=False)
+        resp = 2.0 + 20.0 * np.exp(-((angles - 90) ** 2) / (2 * 25**2))
+        v = osi_two_point(resp, angles)
+        assert v > 0.5, f"Expected osi_two_point > 0.5, got {v:.3f}"
+
+    def test_two_point_osi_flat(self):
+        angles = np.linspace(0, 360, 12, endpoint=False)
+        resp = np.ones(12) * 10.0
+        v = osi_two_point(resp, angles)
+        # Flat → undefined (NaN) or near zero — both acceptable.
+        assert np.isnan(v) or abs(v) < 0.15
+
+    def test_two_point_dsi_direction_selective(self):
+        angles = np.linspace(0, 360, 12, endpoint=False)
+        resp = 2.0 + 20.0 * np.exp(-((angles - 45) ** 2) / (2 * 25**2))
+        v = dsi_two_point(resp, angles)
+        assert v > 0.5, f"Expected dsi_two_point > 0.5, got {v:.3f}"
+
+    def test_gosi_matches_dosi_circular_normalised(self):
+        """``gosi`` is a thin alias — must agree with dosi_circular_normalised."""
+        angles = np.linspace(0, 360, 12, endpoint=False)
+        resp = 2.0 + 20.0 * np.exp(-((angles - 90) ** 2) / (2 * 25**2))
+        assert gosi(resp, angles) == dosi_circular_normalised(resp, angles)
+
+    def test_gdsi_matches_dosi_circular_normalised_direction(self):
+        """``gdsi`` is a thin alias — must agree with the direction form."""
+        angles = np.linspace(0, 360, 12, endpoint=False)
+        resp = 2.0 + 20.0 * np.exp(-((angles - 45) ** 2) / (2 * 25**2))
+        assert gdsi(resp, angles) == dosi_circular_normalised(
+            resp, angles, direction_selectivity=True
+        )
 
 
 # ======================================================================

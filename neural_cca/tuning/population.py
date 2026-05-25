@@ -40,6 +40,16 @@ def orientation_map_statistics(
         - ``"rayleigh_z"`` — Rayleigh Z statistic
         - ``"rayleigh_p"`` — Rayleigh p-value
         - ``"is_uniform"`` — ``True`` if p ≥ 0.05 (fail to reject uniformity)
+
+    References:
+        Mardia, K. V. & Jupp, P. E. (2000).  *Directional Statistics*,
+        2nd ed., §5.2.  Wiley, Chichester.
+        (The Rayleigh-test reference used here; the asymptotic
+        expansion is Eq. 5.2.5.)
+
+        Berens, P. (2009).  *CircStat: a MATLAB toolbox for circular
+        statistics*.  Journal of Statistical Software 31(10).
+        doi:10.18637/jss.v031.i10.
     """
     oris = np.asarray(preferred_orientations, dtype=np.float64)
     n = len(oris)
@@ -82,10 +92,13 @@ def orientation_map_statistics(
 def signal_correlations(
     tuning_curves: npt.NDArray[np.float64],
 ) -> np.ndarray:
-    """Pairwise signal correlations between neurons.
+    r"""Pairwise signal correlations between neurons.
 
     Signal correlations measure the similarity of tuning curves
-    (mean response profiles across orientations).
+    (mean response profiles across orientations).  The standard
+    formulation is the Pearson correlation of the across-trial mean
+    response vectors, as in Cohen & Kohn (2011) and Averbeck, Latham
+    & Pouget (2006).
 
     Args:
         tuning_curves: Array of shape ``(n_neurons, n_orientations)``
@@ -97,6 +110,15 @@ def signal_correlations(
         zero-variance (flat) tuning curve — Pearson's r is undefined in
         that case, matching the package-wide convention that ``np.nan``
         signals "undefined" rather than "uncorrelated".
+
+    References:
+        Cohen, M. R. & Kohn, A. (2011).  *Measuring and interpreting
+        neuronal correlations*.  Nature Neuroscience 14(7), 811–819.
+        doi:10.1038/nn.2842.
+
+        Averbeck, B. B., Latham, P. E. & Pouget, A. (2006).  *Neural
+        correlations, population coding and computation*.  Nature
+        Reviews Neuroscience 7(5), 358–366.  doi:10.1038/nrn1888.
     """
     tuning_curves = np.asarray(tuning_curves, dtype=np.float64)
     n = tuning_curves.shape[0]
@@ -138,6 +160,16 @@ def noise_correlations(
         Pearson's *r* is undefined in that case, matching the
         package-wide convention that ``np.nan`` signals "undefined"
         rather than "uncorrelated".
+
+    References:
+        Cohen, M. R. & Kohn, A. (2011).  *Measuring and interpreting
+        neuronal correlations*.  Nature Neuroscience 14(7), 811–819.
+        doi:10.1038/nn.2842.
+
+        Bair, W., Zohary, E. & Newsome, W. T. (2001).  *Correlated
+        firing in macaque visual area MT: time scales and
+        relationship to behavior*.  Journal of Neuroscience 21(5),
+        1676–1697.  doi:10.1523/JNEUROSCI.21-05-01676.2001.
     """
     trial_rates = np.asarray(trial_rates, dtype=np.float64)
     trial_angles = np.asarray(trial_angles, dtype=np.float64)

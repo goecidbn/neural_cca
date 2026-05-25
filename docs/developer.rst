@@ -92,7 +92,7 @@ This approach also generated a warnings log file that can be useful for debuggin
 Package Structure
 -----------------
 
-The package contains three submodules:
+The package contains four public submodules:
 
 ``sorting``
     Spike sorting (KMeans, PCA, quality metrics, batch processing).
@@ -100,8 +100,18 @@ The package contains three submodules:
 ``tuning``
     Orientation selectivity, tuning bandwidth, F0/F1/F2 modulation ratios.
 
-``sta``
-    Spike train statistics (ISI, CV, firing rates, refractory period violations).
+``spike_train`` (previously ``sta``)
+    Spike train statistics (ISI, CV, firing rates, refractory period
+    violations).  The ``neural_cca.sta`` import path is preserved as a
+    deprecation shim that emits a ``DeprecationWarning`` and re-exports
+    the new namespace.
+
+``synthetic``
+    Synthetic spike-train and waveform generators backing the example
+    notebooks and the test fixtures.  Single source of truth for
+    bin-wise inhomogeneous Poisson with absolute refractory, single
+    Gaussian-tuned cluster construction, and the canonical two-unit
+    demo packaged as a ``SortingData``.
 
 Each submodule has its own ``utils.py`` with shared helpers (``guarded_divide``,
 ``steps2degree``). A canonical copy also lives in ``common_utils.py`` at the

@@ -121,6 +121,9 @@ QUALITY_METRIC_KINDS: dict[str, QualityMetricKind] = {
     "waveform_stability": QualityMetricKind.PER_CLUSTER_FLOAT,
     "amplitude_drift": QualityMetricKind.PER_CLUSTER_FLOAT,
     "fraction_missing": QualityMetricKind.PER_CLUSTER_FLOAT,
+    # Hill 2011 contamination rate (added v0.2.0); per-cluster float
+    # in [0, 0.5], NaN for clusters with fewer than 2 spikes.
+    "contamination_rate_hill": QualityMetricKind.PER_CLUSTER_FLOAT,
 }
 
 

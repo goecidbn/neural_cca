@@ -7,6 +7,121 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `sorting/metrics.py`: `contamination_rate_hill()` — the Hill et al.
+  (2011) closed-form contamination-fraction estimator
+  (`C = 0.5 * (1 - sqrt(1 - 2*Nv*T / (N²*(t_r - t_c))))`).
+  Calibrated to the false-positive contamination percentage that
+  reviewers expect when methods sections quote "contamination < X %".
+  Wired into `evaluate_sorting` so the pipeline now reports both the
+  descriptive `rel_rpvs` (SpikeInterface-style violations per spike)
+  and the Hill contamination fraction per cluster.  Registered in
+  `QUALITY_METRIC_KINDS` so zarr export round-trips it.
+  Reference: doi:10.1523/JNEUROSCI.0971-11.2011.
+- `tuning/selectivity.py`: `osi_two_point()` / `dsi_two_point()` —
+  explicit Niell & Stryker (2008) two-point ratios
+  `(R_pref − R_orth) / (R_pref + R_orth)`.  The functions previously
+  named `gosi` / `gdsi` implemented this metric; they have been
+  reclaimed for the vector-sum / global form (see Changed).
+  Reference: doi:10.1523/JNEUROSCI.0623-08.2008.
+- `tuning/statistics.py`: BCa (bias-corrected and accelerated)
+  bootstrap CI option on `bootstrap_ci()` and
+  `bootstrap_ci_strata()`.  `method="bca"` is the new default
+  because it is second-order accurate and transformation-respecting
+  — the right choice for boundary-bounded statistics like OSI / DSI
+  / gOSI / gDSI in `[0, 1]`.  Returns a `method` key indicating
+  which CI was actually used (falls back to `"percentile"` for
+  degenerate bootstrap distributions).  Reference: Efron (1987),
+  doi:10.1080/01621459.1987.10478410.
+- `spike_train/analysis.py`: `first_spike_latency_thresholded()` —
+  response-detection latency that ignores trials with no
+  above-baseline firing and caps the analysis window.  Reports
+  baseline rate and detection threshold alongside the latency
+  vector.  References: Reich et al. (2000), Smyth et al. (2003),
+  Tovée et al. (1993).
+- `sorting/metrics.py`: `fraction_missing(method=...)` accepts
+  `"lognormal"` (fit on log-amplitudes — better-calibrated for
+  the typical V1 lognormal amplitude distribution; Buzsáki &
+  Mizuseki 2014) and `"empirical"` (non-parametric Gaussian-KDE
+  tail).  The default remains `"gaussian"` (Hill 2011 / Allen
+  Institute convention) for cross-paper comparability.
+- `tuning/temporal.py`: `temporal_frequency_tuning()` now returns
+  `baseline_response` (the mean amplitude on TF=0 blank trials)
+  separately from the log-Gaussian fit.  The fit no longer
+  extrapolates a 40-octave-below floor for TF=0 trials, which
+  could blow up `bandwidth` / `preferred_tf` for cells with strong
+  blank responses.  References: Foster et al. (1985), Hawken et
+  al. (1996).
+- `neural_cca/spike_train/` — new subpackage holding the
+  spike-train statistics that lived under `neural_cca/sta/` until
+  v0.2.0.  See Changed for the migration path.
+
+### Changed
+
+- **BREAKING (with shim): `neural_cca.sta` → `neural_cca.spike_train`.**
+  The old import path remains as a deprecation shim that re-exports
+  every public symbol and emits a `DeprecationWarning` on import.
+  The rename frees the `sta` namespace for the canonical
+  *spike-triggered average* (Schwartz et al. 2006) meaning of
+  "STA" in computational neuroscience.  Migrate by replacing
+  `neural_cca.sta` → `neural_cca.spike_train` in every import.
+- **Behaviour change: `tuning.selectivity.gosi` / `gdsi`** now
+  return the **vector-sum** (global) selectivity index — the
+  modern V1-literature standard, equal to `1 - circular_variance`
+  and computed via `dosi_circular_normalised`.  Previously they
+  returned the two-point Niell & Stryker (2008) ratio, which is
+  now exposed as `osi_two_point` / `dsi_two_point`.  The two
+  numbers coincide only for cells whose tuning curve is a single
+  cosine bump; in general they differ.  References: Mazurek, Kager
+  & Van Hooser (2014) doi:10.3389/fncir.2014.00092, Ringach et
+  al. (2002) doi:10.1523/JNEUROSCI.22-13-05639.2002.
+- `tuning/tuning.py`: `tuning_bandwidth()` defaults to a circular
+  von Mises HWHH (`method="von_mises"`), which is unbiased for
+  preferred orientations near 0°/180°.  The previous linear-Gaussian
+  path is available as `method="gaussian"` for reproducing legacy
+  results but is documented as biased near wraparound.
+  `get_os_metrics` consumes the new default automatically.
+  Reference: Swindale (1998) doi:10.1007/s004220050411.
+- `tuning/statistics.py`: `orientation_selectivity_significance()`
+  applies the Phipson & Smyth (2010) `+1` correction to the
+  permutation p-value (smallest value is now `1/(B+1)` instead of
+  `0`).  `is_significant` now keys off the permutation test alone;
+  `p_rayleigh` is still returned but is documented as a
+  descriptive concentration statistic, *not* a calibrated tail
+  probability for tuning significance (the rate-weighted Rayleigh
+  is non-standard for tuning curves — use the permutation null).
+  Reference: doi:10.2202/1544-6115.1585.
+- `sorting/metrics.py`: `isolation_distance()` and `l_ratio()` gain
+  a `mode="worst_pair"` option that reports the worst (nearest)
+  per-other-cluster value rather than pooling all non-cluster
+  spikes.  The modern best-practice convention from Sibille et
+  al. (2024) and the Allen Institute `ecephys_spike_sorting`
+  pipeline.  Default remains `mode="global"` for backwards
+  compatibility.  Reference: doi:10.1523/ENEURO.0554-23.2024.
+
+### Documented
+
+- `tuning/temporal.py::f1_phase`: full phase-convention block
+  (cosine convention, range `(-π, π]`, reference frame at trial
+  onset, wraparound-safe averaging guidance) added to the
+  docstring.  References: Skottun et al. (1991), Berens (2009).
+- `tuning/population.py`: `signal_correlations` /
+  `noise_correlations` / `orientation_map_statistics` gain
+  bibliographic references (Cohen & Kohn 2011, Averbeck et al.
+  2006, Bair et al. 2001, Mardia & Jupp 2000).
+- `spike_train/analysis.py`: module-level docstring expanded with
+  Shinomoto et al. (2009) for LvR and Holt et al. (1996) for
+  CV/Fano; `fano_factor` gains Eden & Kramer (2010) and Nawrot et
+  al. (2008).
+- `_utils.py::make_rng`: cites O'Neill (2014) for PCG and the
+  numpy/numpy#16313 thread that motivates the DXSM choice.
+- `README.md`: scope statement clarifying the package is intended
+  for already-detected, single-channel waveform snippets; more
+  powerful internals (multi-channel templates, drift correction,
+  STA-based receptive-field estimation) are planned for future
+  releases and will be additive.
+
 ## [0.1.2] - 2026-05-25
 
 ### Added

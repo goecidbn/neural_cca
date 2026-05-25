@@ -29,6 +29,7 @@ from .containers import SortingData, SortingResult
 from .metrics import (
     amplitude_drift,
     calc_weighted_snr,
+    contamination_rate_hill,
     d_prime,
     est_snr,
     fraction_missing,
@@ -406,11 +407,32 @@ def evaluate_sorting(
     for cl in np.unique(cluster_labels):
         snr_per[int(cl)] = est_snr(wv[cluster_labels == cl])
 
+    # Hill 2011 contamination fraction per cluster.  The total
+    # recording duration is the trial count times the assumed trial
+    # length (``stim_window[1]`` — the trial is taken to span
+    # ``[0, end]`` everywhere else in the package).  See the
+    # ``contamination_rate_hill`` docstring for the scaling caveats.
+    try:
+        rec_duration = float(data.n_trials) * float(data.stim_window[1])
+        contam = contamination_rate_hill(
+            st,
+            cluster_labels=cluster_labels,
+            recording_duration=rec_duration,
+            refractory_period=refractory_period,
+        )
+    except Exception as exc:  # noqa: BLE001
+        warnings.warn(
+            f"contamination_rate_hill failed: {exc}; reporting NaN per cluster.",
+            stacklevel=2,
+        )
+        contam = {int(c): float("nan") for c in np.unique(cluster_labels)}
+
     result = {
         "neg_silhouette_rel": neg_sil,
         "silhouette_mean": sil_mean,
         "abs_rpvs": abs_rpvs,
         "rel_rpvs": rel_rpvs,
+        "contamination_rate_hill": contam,
         "snr_weighted": snr_w,
         "snr_per_cluster": snr_per,
     }

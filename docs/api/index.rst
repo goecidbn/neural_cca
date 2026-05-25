@@ -5,6 +5,6 @@ API Reference
    :maxdepth: 2
 
    sorting
-   sta
+   spike_train
    tuning
    synthetic

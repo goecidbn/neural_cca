@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from neural_cca.sta.analysis import (
+from neural_cca.spike_train.analysis import (
     autocorrelogram,
     cv_log_isi,
     fano_factor,
@@ -369,7 +369,7 @@ class TestAutocorrelogram:
         import matplotlib
 
         matplotlib.use("Agg")  # headless backend, no display required
-        from neural_cca.sta.plotting import plot_autocorrelogram
+        from neural_cca.spike_train.plotting import plot_autocorrelogram
 
         st = np.sort(np.random.default_rng(0).uniform(0.0, 1.0, 30))
         with pytest.warns(RuntimeWarning, match="whole multiple of bin_size"):
@@ -387,7 +387,7 @@ class TestAutocorrelogram:
         import matplotlib
 
         matplotlib.use("Agg")
-        from neural_cca.sta.plotting import plot_autocorrelogram
+        from neural_cca.spike_train.plotting import plot_autocorrelogram
 
         st = np.sort(np.random.default_rng(0).uniform(0.0, 1.0, 30))
         with _warn.catch_warnings():

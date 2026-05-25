@@ -23,23 +23,31 @@ requested.
 Scientific scope
 ----------------
 
-**Selectivity indices.**  Two complementary families:
+**Selectivity indices.**  Two complementary families
+(Mazurek, Kager & Van Hooser 2014, doi:10.3389/fncir.2014.00092):
 
-* *Vector-sum* — :func:`dosi_circular_normalised` returns
+* *Vector-sum* (the modern V1 default) —
+  :func:`dosi_circular_normalised` returns
   :math:`\mathrm{OSI} = |\sum_\theta R(\theta) e^{2i\theta}| / \sum_\theta R(\theta)`
   on doubled angles (orientation space) and the analogous DSI on
-  single angles (direction space).  :func:`circular_variance`
-  returns :math:`1 - \mathrm{OSI}`.  All three take an optional
-  Rayleigh-test :math:`p`-value via ``p_value=True`` (Mardia & Jupp
-  approximation, 5th-order).
-* *Global* — :func:`gosi` returns
+  single angles (direction space).  :func:`gosi` and :func:`gdsi`
+  are thin aliases for these so methods sections can reach for
+  the name they expect.  :func:`circular_variance` returns
+  :math:`1 - \mathrm{OSI}` (Ringach et al. 2002).  ``p_value=True``
+  returns a rate-weighted Rayleigh statistic (Mardia & Jupp
+  approximation, 5th-order) for **descriptive** use only — it is
+  not a calibrated tail probability for tuning-curve significance.
+  For a calibrated permutation test use
+  :func:`orientation_selectivity_significance`.
+* *Two-point* — :func:`osi_two_point` and :func:`dsi_two_point`
+  return the Niell & Stryker (2008) ratios
   :math:`(R_\mathrm{pref} - R_\mathrm{orth}) / (R_\mathrm{pref} + R_\mathrm{orth})`
   with the preferred orientation estimated by the vector-sum
-  circular mean (not winner-take-all argmax).  :func:`gdsi`
-  computes the analogous direction index using the response at
-  preferred ± 180°.  Orthogonal lookups use ``period=180`` /
-  ``period=360`` so cells with a preferred orientation near the
-  0° / 180° (or 0° / 360°) seam pick the correct sample.
+  circular mean (not winner-take-all argmax).  Orthogonal lookups
+  use ``period=180`` / ``period=360`` so cells with a preferred
+  orientation near the 0° / 180° (or 0° / 360°) seam pick the
+  correct sample.  These functions were named ``gosi`` / ``gdsi``
+  before v0.2.0 — see the changelog for the rename.
 
 **Curve fitting.**  :func:`von_mises_fit` accepts
 ``tuning_type="orientation"`` (single bump on the half-circle,
@@ -84,16 +92,24 @@ pairwise (n, n) Pearson matrices on tuning curves and on z-scored
 trial residuals respectively.
 
 **Statistical testing.**
-:func:`orientation_selectivity_significance` combines a
-permutation null (shuffle responses, keep angles fixed —
+:func:`orientation_selectivity_significance` runs the V1-literature
+standard permutation null (shuffle responses, keep angles fixed —
 intentionally; this is the right null for "rates depend on
-angles") with a Rayleigh test.  :func:`anova_across_orientations`
-runs a one-way F-test on trial firing rates across angles.
+angles") with the Phipson & Smyth (2010) ``+1`` correction so the
+smallest reportable :math:`p` is :math:`1/(B+1)` instead of ``0``.
+A rate-weighted Rayleigh statistic is also returned for legacy
+reporting but is documented as descriptive only.
+:func:`anova_across_orientations` runs a one-way F-test on trial
+firing rates across angles.
 :func:`bootstrap_ci_strata` returns stratified-bootstrap CIs that
 preserve the (rate, angle) pairing — what the composite
 :func:`get_os_metrics` uses for its OSI / DSI / gOSI / gDSI CIs.
-Plain :func:`bootstrap_ci` is provided for non-paired statistics
-(e.g. mean of a flat sample).
+The default ``method="bca"`` (Efron 1987, bias-corrected and
+accelerated) is second-order accurate and transformation-respecting
+— the right choice for boundary-bounded statistics like OSI in
+``[0, 1]``.  ``method="percentile"`` is available for backwards
+compatibility.  Plain :func:`bootstrap_ci` is provided for
+non-paired statistics (e.g. mean of a flat sample).
 
 **Composite.**  :func:`get_os_metrics` is the all-in-one entry
 point used by :func:`run_sorting_pipeline`'s per-cluster OS

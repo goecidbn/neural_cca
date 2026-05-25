@@ -6,6 +6,7 @@ from .io_util import load_from_arrays, read_zarr_sorting, to_zarr_clustered, to_
 from .metrics import (
     amplitude_drift,
     calc_weighted_snr,
+    contamination_rate_hill,
     d_prime,
     d_prime_pairwise_matrix,
     est_snr,
@@ -50,6 +51,7 @@ __all__ = [
     "est_snr",
     "calc_weighted_snr",
     "rpvs",
+    "contamination_rate_hill",
     "isolation_distance",
     "l_ratio",
     "d_prime",

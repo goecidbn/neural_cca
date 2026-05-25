@@ -195,7 +195,7 @@ def batch_sort_experiment(
             sta_metrics: dict[int, dict] | None = None
             if compute_sta:
                 try:
-                    from ..sta.analysis import minimal_spike_train_analysis
+                    from ..spike_train.analysis import minimal_spike_train_analysis
 
                     sta_metrics = {}
                     for cl in np.unique(result.cluster_labels):

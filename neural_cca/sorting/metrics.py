@@ -24,6 +24,7 @@ __all__ = [
     "est_snr",
     "calc_weighted_snr",
     "rpvs",
+    "contamination_rate_hill",
     "isolation_distance",
     "l_ratio",
     "d_prime",
@@ -314,6 +315,179 @@ def rpvs(
 
 
 # ---------------------------------------------------------------------------
+# Hill 2011 contamination rate
+# ---------------------------------------------------------------------------
+
+
+def contamination_rate_hill(
+    spike_times: npt.NDArray,
+    cluster_labels: npt.NDArray | None = None,
+    recording_duration: float | None = None,
+    refractory_period: float = 0.001,
+    censored_period: float = 0.0,
+    all_clusters: bool = True,
+    cluster_id: int | None = None,
+) -> float | dict[int, float]:
+    r"""Estimated cluster contamination fraction (Hill et al. 2011).
+
+    The Hill estimator converts an observed count of refractory-period
+    violations into an estimate of the *false-positive fraction* of
+    the cluster — i.e. the fraction of spikes that do **not** come from
+    the target unit.  This is the calibrated metric reviewers expect
+    when methods sections report e.g. "contamination < 10 %", and is
+    the basis for the Allen Institute / IBL inclusion thresholds.
+
+    .. math::
+
+        C = \tfrac{1}{2}\left(
+            1 - \sqrt{\,
+                1 - \frac{2\,N_v\,T}{N^2\,(t_r - t_c)}
+            }\,
+        \right)
+
+    where :math:`N_v` is the violation count, :math:`N` the number of
+    spikes in the cluster, :math:`T` the recording duration in
+    seconds, :math:`t_r` the refractory period in seconds, and
+    :math:`t_c` the censored period (the dead time of the spike
+    detector, typically the spike-sorting blanking window).
+
+    The argument of the square root is clipped to :math:`[0, 1]`: if
+    the observed violation count exceeds the level that a
+    fully-random (50 % contamination) cluster would produce, the
+    estimator saturates at :math:`C = 0.5` rather than returning
+    ``nan`` from a negative discriminant.  This matches the
+    SpikeInterface and `ecephys_spike_sorting` conventions.
+
+    .. note::
+
+        The estimator assumes contaminant spikes are temporally
+        independent of the target spikes.  If the contaminant is
+        another nearby unit whose firing is correlated with the
+        target (cross-talk, common drive), the estimate is biased —
+        anti-correlated contaminants are *under*-estimated,
+        positively correlated contaminants are *over*-estimated.
+        See [Llobet et al. 2022 / Sibille et al. 2024] for
+        cross-contamination-aware refinements.
+
+    .. warning::
+
+        Two scaling pitfalls:
+
+        - **Pass the total recording duration**, not the trial-window
+          duration.  For a trial-based recording with ``n_trials``
+          trials of length ``trial_dur`` seconds each, supply
+          ``recording_duration = n_trials * trial_dur``.  Halving
+          this value doubles the apparent contamination.
+        - The default ``censored_period=0`` matches Hill's original
+          formulation but slightly over-estimates contamination when
+          the spike sorter blanks a window around each detection.
+          Set ``censored_period`` to the sorter's blanking window
+          (typically 0.5 ms for Kilosort-style sorters) for a
+          tighter estimate.
+
+    Args:
+        spike_times: Spike times in seconds.
+        cluster_labels: Optional cluster labels.  When given, the
+            function returns one value per cluster (or one value for
+            ``cluster_id`` when ``all_clusters=False``).
+        recording_duration: Total recording duration in seconds.
+            Required; an estimate from ``spike_times.max() -
+            spike_times.min()`` is *not* used because it
+            under-estimates for trial-based data (the window is at
+            most one trial's length, but spikes live across many
+            trials).
+        refractory_period: Refractory period :math:`t_r` in seconds
+            (default 1 ms).  Must be strictly positive.
+        censored_period: Detector dead time :math:`t_c` in seconds
+            (default 0 s).  Must satisfy ``0 <= censored_period <
+            refractory_period``.
+        all_clusters: Per-cluster dict (``True``) or single cluster
+            (``False``).
+        cluster_id: Cluster ID when ``all_clusters=False``.
+
+    Returns:
+        Estimated contamination fraction in ``[0, 0.5]``, or a
+        ``{cluster_id: float}`` dict.  Returns ``np.nan`` for
+        clusters with fewer than 2 spikes (rate cannot be estimated)
+        or when ``recording_duration`` is non-positive.
+
+    Raises:
+        ValueError: When required arguments are missing or invalid:
+            ``recording_duration`` not given, ``refractory_period``
+            non-positive, ``censored_period`` outside
+            ``[0, refractory_period)``.
+
+    References:
+        Hill, D. N., Mehta, S. B. & Kleinfeld, D. (2011).  *Quality
+        metrics to accompany spike sorting of extracellular signals*.
+        Journal of Neuroscience 31(24), 8699–8705.
+        doi:10.1523/JNEUROSCI.0971-11.2011.
+
+        Llobet, V., Wyngaard, A. & Barbour, B. (2022).  *Automatic
+        post-processing and merging of multiple spike-sorting
+        analyses with Lussac*.  bioRxiv 2022.02.08.479192.
+
+        Sibille, J. et al. (2024).  *Assessing cross-contamination
+        in spike-sorted electrophysiology data*.  eNeuro 11(8),
+        ENEURO.0554-23.2024.  doi:10.1523/ENEURO.0554-23.2024.
+
+        SpikeInterface `quality_metrics` module:
+        https://spikeinterface.readthedocs.io/en/latest/modules/qualitymetrics/isi_violations.html
+    """
+    if recording_duration is None:
+        raise ValueError(
+            "recording_duration is required.  For trial-based data "
+            "pass n_trials * trial_duration, not the per-trial "
+            "window — see the docstring warning."
+        )
+    if refractory_period <= 0:
+        raise ValueError(f"refractory_period must be positive (got {refractory_period}).")
+    if not (0.0 <= censored_period < refractory_period):
+        raise ValueError(
+            "censored_period must satisfy 0 <= censored_period < "
+            f"refractory_period; got censored_period={censored_period}, "
+            f"refractory_period={refractory_period}."
+        )
+    _validate_cluster_args(all_clusters, cluster_id)
+
+    t_r = float(refractory_period)
+    t_c = float(censored_period)
+    T = float(recording_duration)
+    # A non-positive duration makes the estimator undefined; surface NaN
+    # uniformly via the per-cluster helper rather than building a
+    # special-cased return-shape dispatcher up here.
+    duration_valid = T > 0.0
+
+    def _hill_one(spk: np.ndarray) -> float:
+        if not duration_valid:
+            return float("nan")
+        N = int(spk.size)
+        if N < 2:
+            return float("nan")
+        diffs = np.diff(np.sort(spk))
+        diffs = diffs[diffs > 0]
+        N_v = int(np.sum(diffs < t_r))
+        # Closed-form Hill estimator.  ``disc`` (the radicand) can go
+        # negative for catastrophically contaminated units; clip to 0
+        # so the estimator saturates at C = 0.5 instead of returning
+        # NaN from sqrt(negative).
+        disc = 1.0 - (2.0 * N_v * T) / (N**2 * (t_r - t_c))
+        disc = max(0.0, float(disc))
+        return 0.5 * (1.0 - np.sqrt(disc))
+
+    if cluster_labels is None:
+        return _hill_one(np.asarray(spike_times, dtype=np.float64))
+
+    cluster_labels = np.asarray(cluster_labels)
+    spike_times = np.asarray(spike_times, dtype=np.float64)
+    if all_clusters:
+        return {
+            int(c): _hill_one(spike_times[cluster_labels == c]) for c in np.unique(cluster_labels)
+        }
+    return _hill_one(spike_times[cluster_labels == cluster_id])
+
+
+# ---------------------------------------------------------------------------
 # Helper: validate all_clusters / cluster_id combination
 # ---------------------------------------------------------------------------
 
@@ -435,12 +609,31 @@ def isolation_distance(
     cluster_labels: npt.NDArray,
     all_clusters: bool = True,
     cluster_id: int | None = None,
+    *,
+    mode: str = "global",
 ) -> float | dict[int, float]:
-    """Isolation distance per Harris et al. (2000).
+    r"""Isolation distance per Harris et al. (2000).
 
-    For a cluster of size *n_c*, compute the Mahalanobis distance from
-    the cluster centroid at which *n_c* non-cluster spikes are enclosed.
-    Larger values indicate better isolation.
+    For a cluster of size *n_c*, the isolation distance is the
+    Mahalanobis radius from the cluster centroid that encloses
+    *n_c* non-cluster spikes.  Larger values indicate better
+    isolation.
+
+    **Modes.**
+
+    - ``mode="global"`` (default, legacy) — non-cluster spikes are
+      pooled across *all* other clusters.  Matches the original
+      Harris et al. (2000) and Schmitzer-Torbert et al. (2005)
+      formulation.
+    - ``mode="worst_pair"`` (modern best practice) — for each other
+      cluster *B*, compute the isolation distance using only the
+      spikes of *B* as the "out" set, then return the *minimum*
+      across other clusters (the *worst* neighbour).  Use this when
+      you want to flag clusters that overlap badly with a *specific*
+      neighbour even if the global isolation distance is large.
+      This is the convention recommended by Sibille et al. (2024,
+      *eNeuro*) and the Allen Institute `ecephys_spike_sorting`
+      pipeline.
 
     The cluster covariance is estimated with the **Ledoit–Wolf shrinkage
     estimator** (``sklearn.covariance.LedoitWolf``) rather than the
@@ -454,16 +647,39 @@ def isolation_distance(
         all_clusters: Return dict of per-cluster values (``True``)
             or a single cluster (``False``).
         cluster_id: Cluster ID when ``all_clusters=False``.
+        mode: ``"global"`` (default, Harris 2000) or ``"worst_pair"``
+            (modern best practice, Sibille 2024).
 
     Returns:
         Isolation distance (float) or ``{cluster_id: float}`` dict.
         ``np.nan`` when the cluster is too small or there are fewer
-        non-cluster spikes than cluster spikes.
+        non-cluster spikes than cluster spikes (under ``"global"``)
+        / fewer spikes in the worst neighbour than in the target
+        cluster (under ``"worst_pair"``).
+
+    References:
+        Harris, K. D., Henze, D. A., Csicsvari, J., Hirase, H. &
+        Buzsáki, G. (2000).  *Accuracy of tetrode spike separation as
+        determined by simultaneous intracellular and extracellular
+        measurements*.  Journal of Neurophysiology 84(1), 401–414.
+        doi:10.1152/jn.2000.84.1.401.
+
+        Schmitzer-Torbert, N., Jackson, J., Henze, D., Harris, K. &
+        Redish, A. D. (2005).  *Quantitative measures of cluster
+        quality for use in extracellular recordings*.  Neuroscience
+        131(1), 1–11.  doi:10.1016/j.neuroscience.2004.09.066.
+
+        Sibille, J. et al. (2024).  *Assessing cross-contamination
+        in spike-sorted electrophysiology data*.  eNeuro 11(8),
+        ENEURO.0554-23.2024.  doi:10.1523/ENEURO.0554-23.2024.
     """
+    if mode not in ("global", "worst_pair"):
+        raise ValueError(f"mode must be 'global' or 'worst_pair', got {mode!r}.")
     _validate_cluster_args(all_clusters, cluster_id)
     cluster_labels = np.asarray(cluster_labels)
+    unique = np.unique(cluster_labels)
 
-    def _iso_one(cid: int) -> float:
+    def _iso_global(cid: int) -> float:
         mask = cluster_labels == cid
         n_c = int(mask.sum())
         if n_c < 2:
@@ -478,9 +694,38 @@ def isolation_distance(
         d2_sorted = np.sort(d2)
         return float(d2_sorted[n_c - 1])
 
+    def _iso_worst_pair(cid: int) -> float:
+        # For each other cluster B, the isolation distance is the
+        # Mahalanobis radius around A's centroid that encloses n_A
+        # spikes of B.  Worst-case = minimum over all B (the
+        # closest competing cluster).
+        mask = cluster_labels == cid
+        n_c = int(mask.sum())
+        if n_c < 2:
+            return np.nan
+        f_in = features[mask]
+        cov_inv = _ledoit_wolf_precision(f_in)
+        mean = f_in.mean(axis=0)
+        worst = np.inf
+        for other in unique:
+            if other == cid:
+                continue
+            f_other = features[cluster_labels == other]
+            if len(f_other) < n_c:
+                # Not enough spikes in B to enclose n_A — skip this
+                # neighbour rather than degrading the worst-case
+                # score on a small-cluster artefact.
+                continue
+            d2 = _mahalanobis_sq(f_other, mean, cov_inv)
+            d2_sorted = np.sort(d2)
+            worst = min(worst, float(d2_sorted[n_c - 1]))
+        return worst if np.isfinite(worst) else np.nan
+
+    _iso_one = _iso_worst_pair if mode == "worst_pair" else _iso_global
+
     if all_clusters:
-        return {int(c): _iso_one(c) for c in np.unique(cluster_labels)}
-    return _iso_one(cluster_id)
+        return {int(c): _iso_one(int(c)) for c in unique}
+    return _iso_one(int(cluster_id))
 
 
 # ---------------------------------------------------------------------------
@@ -493,11 +738,28 @@ def l_ratio(
     cluster_labels: npt.NDArray,
     all_clusters: bool = True,
     cluster_id: int | None = None,
+    *,
+    mode: str = "global",
 ) -> float | dict[int, float]:
-    """L-ratio: complement of isolation distance via chi-squared CDF.
+    r"""L-ratio: complement of isolation distance via chi-squared CDF.
 
-    ``L = sum(1 - chi2.cdf(D², df)) / n_cluster`` for all non-cluster
-    spikes.  Smaller values (< 0.1) indicate better isolation.
+    .. math::
+
+        L = \frac{1}{n_c} \sum_{x \notin C} \bigl(1 - \chi^2_d\,
+            \mathrm{cdf}(\,d_M^2(x, \mu_C, \Sigma_C)\,)\bigr)
+
+    Smaller values (< 0.1) indicate better isolation.
+
+    **Modes.**
+
+    - ``mode="global"`` (default, legacy) — the sum runs over all
+      non-cluster spikes.  Matches Schmitzer-Torbert et al. (2005).
+    - ``mode="worst_pair"`` (modern best practice) — for each other
+      cluster *B*, compute the L-ratio using only the spikes of *B*
+      as the "out" set, then return the *maximum* across other
+      clusters (the *worst* neighbour — high L-ratio = poor
+      isolation).  Same motivation as in
+      :func:`isolation_distance(mode="worst_pair")`.
 
     The cluster covariance is estimated with the **Ledoit–Wolf shrinkage
     estimator** (``sklearn.covariance.LedoitWolf``); see
@@ -509,15 +771,30 @@ def l_ratio(
         cluster_labels: Cluster label per sample.
         all_clusters: Return dict (``True``) or single value (``False``).
         cluster_id: Cluster ID when ``all_clusters=False``.
+        mode: ``"global"`` (default, Schmitzer-Torbert 2005) or
+            ``"worst_pair"`` (Sibille 2024).
 
     Returns:
         L-ratio (float) or ``{cluster_id: float}`` dict.
+
+    References:
+        Schmitzer-Torbert, N., Jackson, J., Henze, D., Harris, K. &
+        Redish, A. D. (2005).  *Quantitative measures of cluster
+        quality for use in extracellular recordings*.  Neuroscience
+        131(1), 1–11.  doi:10.1016/j.neuroscience.2004.09.066.
+
+        Sibille, J. et al. (2024).  *Assessing cross-contamination
+        in spike-sorted electrophysiology data*.  eNeuro 11(8),
+        ENEURO.0554-23.2024.  doi:10.1523/ENEURO.0554-23.2024.
     """
+    if mode not in ("global", "worst_pair"):
+        raise ValueError(f"mode must be 'global' or 'worst_pair', got {mode!r}.")
     _validate_cluster_args(all_clusters, cluster_id)
     cluster_labels = np.asarray(cluster_labels)
     df = features.shape[1]
+    unique = np.unique(cluster_labels)
 
-    def _lr_one(cid: int) -> float:
+    def _lr_global(cid: int) -> float:
         mask = cluster_labels == cid
         n_c = int(mask.sum())
         if n_c < 2:
@@ -533,9 +810,35 @@ def l_ratio(
         L = float(np.sum(1.0 - sp_stats.chi2.cdf(d2, df=df)))
         return L / n_c
 
+    def _lr_worst_pair(cid: int) -> float:
+        mask = cluster_labels == cid
+        n_c = int(mask.sum())
+        if n_c < 2:
+            return np.nan
+        f_in = features[mask]
+        cov_inv = _ledoit_wolf_precision(f_in)
+        mean = f_in.mean(axis=0)
+        worst = -np.inf
+        any_other = False
+        for other in unique:
+            if other == cid:
+                continue
+            f_other = features[cluster_labels == other]
+            if len(f_other) == 0:
+                continue
+            any_other = True
+            d2 = _mahalanobis_sq(f_other, mean, cov_inv)
+            L = float(np.sum(1.0 - sp_stats.chi2.cdf(d2, df=df))) / n_c
+            worst = max(worst, L)
+        if not any_other:
+            return np.nan
+        return worst
+
+    _lr_one = _lr_worst_pair if mode == "worst_pair" else _lr_global
+
     if all_clusters:
-        return {int(c): _lr_one(c) for c in np.unique(cluster_labels)}
-    return _lr_one(cluster_id)
+        return {int(c): _lr_one(int(c)) for c in unique}
+    return _lr_one(int(cluster_id))
 
 
 # ---------------------------------------------------------------------------
@@ -862,22 +1165,52 @@ def fraction_missing(
     all_clusters: bool = True,
     cluster_id: int | None = None,
     normality_warn: bool = True,
+    method: str = "gaussian",
 ) -> float | dict[int, float]:
-    """Estimate fraction of undetected spikes from amplitude distribution.
+    r"""Estimate fraction of undetected spikes from amplitude distribution.
 
-    Fit a Gaussian to the peak-amplitude histogram and estimate the
-    fraction of the distribution below the observed minimum amplitude.
+    Estimates the fraction of the underlying spike-amplitude
+    distribution that sits below the lowest observed amplitude — i.e.
+    the spikes the threshold-based detector would have missed.  This
+    is the standard "amplitude cutoff" / "missing-spikes" metric used
+    in the spike-sorting QC literature (Hill et al. 2011, the Allen
+    Institute *ecephys_spike_sorting* pipeline).
+
+    **Methods.**
+
+    - ``method="gaussian"`` (default, legacy) — fit a normal to the
+      peak-amplitude histogram and report ``Φ((threshold − μ) / σ)``.
+      The Hill 2011 / Allen Institute convention.  Assumes the
+      *true* spike-amplitude distribution is Gaussian; usually wrong
+      for real recordings (V1 amplitude distributions tend to be
+      lognormal — Buzsáki & Mizuseki 2014) but is the universally
+      reported number.  Use this for cross-paper comparability.
+    - ``method="lognormal"`` — fit on the *log-amplitudes* and
+      compute the tail probability there.  Better-calibrated for the
+      observed shape of V1 amplitude distributions; reports
+      systematically *higher* missing fractions than the Gaussian
+      method for skewed clusters (because the Gaussian tail
+      underweights the low-amplitude side).  Use this when you've
+      visually inspected the amplitude histogram and confirmed it is
+      lognormal-shaped (or when the ``normality_warn`` KS test
+      rejects normality strongly).
+    - ``method="empirical"`` — non-parametric tail estimate based on
+      the empirical CDF and a Gaussian kernel extrapolation
+      (Silverman's rule).  Makes no parametric assumption about the
+      shape; the trade-off is higher variance for small clusters.
+      Best for highly non-Gaussian / multi-modal distributions
+      where neither Gaussian nor lognormal fits are appropriate.
 
     .. warning::
-       This estimator assumes the underlying amplitude distribution is
-       approximately Gaussian.  For multi-modal distributions (mixed
-       units, contamination, drift) the result is meaningless.  When
-       *normality_warn* is ``True`` (the default) a Kolmogorov–Smirnov
-       test is run against the fitted normal and a warning is emitted
-       when ``KS p < 0.01``.  Inspect the amplitude histogram before
-       trusting this number — alternatives for non-Gaussian amplitude
-       distributions include Gaussian-mixture fits, lognormal fits, or
-       empirical-CDF tail estimation.
+
+       For **all three** methods, multi-modal amplitude distributions
+       (mixed units, drift across the recording, bursts) violate the
+       single-distribution assumption and the returned number is
+       meaningless.  The KS-test warning (``normality_warn=True``,
+       applies only to ``method="gaussian"``) is a cheap diagnostic
+       but is not exhaustive — inspect the amplitude histogram
+       directly before trusting any of these estimates for a low-SNR
+       cluster.
 
     Args:
         waveforms: Waveform matrix ``(n_spikes, snippet_length)``.
@@ -886,37 +1219,108 @@ def fraction_missing(
         cluster_id: Cluster ID when ``all_clusters=False``.
         normality_warn: If ``True`` (default), warn when the KS test
             against a fitted normal rejects normality at *p < 0.01*.
+            Only consulted for ``method="gaussian"``.
+        method: ``"gaussian"`` (default, legacy / Hill 2011),
+            ``"lognormal"``, or ``"empirical"``.
 
     Returns:
         Fraction missing (float, 0–1) or ``{cluster_id: float}`` dict.
-        ``np.nan`` if fewer than 10 spikes.
+        ``np.nan`` if fewer than 10 spikes (or 20 for the empirical
+        method, which needs more data to estimate the tail).
+
+    Raises:
+        ValueError: If *method* is not one of the supported strings.
+
+    References:
+        Hill, D. N., Mehta, S. B. & Kleinfeld, D. (2011).  *Quality
+        metrics to accompany spike sorting of extracellular signals*.
+        Journal of Neuroscience 31(24), 8699–8705.
+        doi:10.1523/JNEUROSCI.0971-11.2011.
+
+        Buzsáki, G. & Mizuseki, K. (2014).  *The log-dynamic brain:
+        how skewed distributions affect network operations*.  Nature
+        Reviews Neuroscience 15(4), 264–278.  doi:10.1038/nrn3687.
+
+        Silverman, B. W. (1986).  *Density Estimation for Statistics
+        and Data Analysis*.  Chapman & Hall, London.  (For
+        kernel-bandwidth selection used by ``method="empirical"``.)
+
+        Allen Institute *ecephys_spike_sorting* — `amplitude_cutoff`
+        reference implementation:
+        https://github.com/AllenInstitute/ecephys_spike_sorting/
     """
+    if method not in ("gaussian", "lognormal", "empirical"):
+        raise ValueError(
+            f"method must be one of 'gaussian', 'lognormal', 'empirical'; got {method!r}."
+        )
     _validate_cluster_args(all_clusters, cluster_id)
 
     def _frac_one(w: npt.NDArray, label: object | None = None) -> float:
-        if len(w) < 10:
+        # Sample-size floor: 10 spikes for parametric fits (the legacy
+        # Gaussian and the lognormal); 20 for the empirical/KDE tail
+        # which is variance-dominated for tiny samples.
+        n_min = 20 if method == "empirical" else 10
+        if len(w) < n_min:
             return np.nan
         amps = np.max(w, axis=1) - np.min(w, axis=1)
-        mu, sigma = sp_stats.norm.fit(amps)
-        if sigma == 0:
-            # All amplitudes identical — Gaussian-tail estimator undefined
+        if method == "gaussian":
+            mu, sigma = sp_stats.norm.fit(amps)
+            if sigma == 0:
+                return np.nan
+            if normality_warn and len(amps) >= 20:
+                _ks, ks_p = sp_stats.kstest(amps, "norm", args=(mu, sigma))
+                if ks_p < 0.01:
+                    tag = f" (cluster {label})" if label is not None else ""
+                    warnings.warn(
+                        f"fraction_missing{tag}: amplitude distribution is "
+                        f"not normal (KS p={ks_p:.2g}); the Gaussian-tail "
+                        f"estimate may be misleading. Consider "
+                        f"method='lognormal' or method='empirical', or "
+                        f"inspect the amplitude histogram.",
+                        RuntimeWarning,
+                        stacklevel=3,
+                    )
+            threshold = amps.min()
+            return float(sp_stats.norm.cdf(threshold, loc=mu, scale=sigma))
+
+        if method == "lognormal":
+            # Strictly positive amplitudes are required for the log
+            # transform.  Real peak-to-peak waveform amplitudes are
+            # always > 0; this guard catches edge cases where the
+            # waveform is identically zero (which would also give
+            # NaN under the Gaussian path via sigma == 0).
+            if np.any(amps <= 0):
+                return np.nan
+            log_amps = np.log(amps)
+            mu_log = float(np.mean(log_amps))
+            sigma_log = float(np.std(log_amps, ddof=1))
+            if sigma_log == 0:
+                return np.nan
+            threshold_log = float(np.log(amps.min()))
+            return float(sp_stats.norm.cdf(threshold_log, loc=mu_log, scale=sigma_log))
+
+        # method == "empirical"
+        # Estimate the underlying density with a Gaussian kernel (KDE)
+        # at Silverman's bandwidth and integrate the tail below the
+        # observed minimum.  This is the non-parametric analogue of
+        # the Gaussian-tail estimator and makes no assumption about
+        # the shape of the amplitude distribution.
+        amps_sorted = np.sort(amps)
+        # Silverman's rule of thumb: h = 1.06 σ̂ n^(-1/5).
+        n = len(amps_sorted)
+        sigma_est = float(np.std(amps_sorted, ddof=1))
+        if sigma_est == 0:
             return np.nan
-        if normality_warn and len(amps) >= 20:
-            # KS test against the fitted normal — cheap and standard
-            _ks, ks_p = sp_stats.kstest(amps, "norm", args=(mu, sigma))
-            if ks_p < 0.01:
-                tag = f" (cluster {label})" if label is not None else ""
-                warnings.warn(
-                    f"fraction_missing{tag}: amplitude distribution is "
-                    f"not normal (KS p={ks_p:.2g}); the Gaussian-tail "
-                    f"estimate may be misleading. Consider inspecting "
-                    f"the amplitude histogram or using an alternative "
-                    f"estimator.",
-                    RuntimeWarning,
-                    stacklevel=3,
-                )
-        threshold = amps.min()
-        return float(sp_stats.norm.cdf(threshold, loc=mu, scale=sigma))
+        h = 1.06 * sigma_est * n ** (-1.0 / 5.0)
+        # Tail probability under the KDE: ∫_{-∞}^{x_min} f̂(t) dt
+        # = (1/n) Σ Φ((x_min − amp_i) / h).
+        x_min = float(amps_sorted[0])
+        tail = float(np.mean(sp_stats.norm.cdf((x_min - amps_sorted) / h)))
+        # Clamp to [0, 0.5] — the empirical method can in principle
+        # produce a tiny number > 0.5 from kernel smoothing of a
+        # near-symmetric distribution; saturate consistently with
+        # the Gaussian / lognormal paths.
+        return max(0.0, min(0.5, tail))
 
     if cluster_labels is None:
         return _frac_one(waveforms)

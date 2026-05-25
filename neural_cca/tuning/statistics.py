@@ -10,7 +10,7 @@ from collections.abc import Callable
 
 import numpy as np
 import numpy.typing as npt
-from scipy.stats import f_oneway
+from scipy.stats import f_oneway, norm
 
 from .._utils import make_rng
 from ._filter import _build_trial_filter, _TrialFilteredSpikes
@@ -24,16 +24,137 @@ __all__ = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Bootstrap CI helpers
+# ---------------------------------------------------------------------------
+
+
+def _percentile_ci(
+    boot_stats: npt.NDArray,
+    ci_level: float,
+) -> tuple[float, float]:
+    """Plain percentile CI from a bootstrap distribution."""
+    alpha = 1.0 - ci_level
+    lo = float(np.nanpercentile(boot_stats, 100 * alpha / 2))
+    hi = float(np.nanpercentile(boot_stats, 100 * (1 - alpha / 2)))
+    return lo, hi
+
+
+def _bca_ci(
+    estimate: float,
+    boot_stats: npt.NDArray,
+    jackknife_stats: npt.NDArray,
+    ci_level: float,
+) -> tuple[float, float]:
+    r"""Bias-corrected and accelerated (BCa) confidence interval.
+
+    Computes the BCa percentile end-points :math:`\alpha_1`,
+    :math:`\alpha_2` (Efron 1987) from the bootstrap distribution and
+    the jackknife distribution, then reports the corresponding
+    bootstrap quantiles.
+
+    The bias correction :math:`z_0` shifts the percentile end-points
+    by the fraction of bootstrap replicates below the point estimate;
+    the acceleration :math:`\hat{a}` corrects for non-constant
+    variance of the statistic across the parameter range.  Together
+    they yield a CI that is *second-order accurate* and
+    transformation-respecting, in contrast to the (first-order, not
+    transformation-respecting) percentile CI.
+
+    When the bootstrap distribution is degenerate (constant, or all
+    above / below the point estimate) the BCa formulas blow up — the
+    helper falls back to the plain percentile CI and emits no warning
+    because the percentile CI is also undefined in that case.
+
+    References:
+        Efron, B. (1987).  *Better bootstrap confidence intervals*.
+        Journal of the American Statistical Association 82(397),
+        171–185.  doi:10.1080/01621459.1987.10478410.
+
+        DiCiccio, T. J. & Efron, B. (1996).  *Bootstrap confidence
+        intervals*.  Statistical Science 11(3), 189–212.
+        doi:10.1214/ss/1032280214.
+    """
+    alpha = 1.0 - ci_level
+    boot_valid = boot_stats[~np.isnan(boot_stats)]
+    if len(boot_valid) < 2:
+        return float("nan"), float("nan")
+
+    # z0: bias correction — Φ⁻¹ of the fraction of bootstrap replicates
+    # below the point estimate.  Degenerate ratios (0 or 1) make
+    # ``norm.ppf`` return ±inf; fall back to plain percentile in that case.
+    below = float(np.mean(boot_valid < estimate))
+    if not 0.0 < below < 1.0:
+        return _percentile_ci(boot_stats, ci_level)
+    z0 = float(norm.ppf(below))
+
+    # a: acceleration — skewness of the jackknife distribution.
+    jk_valid = jackknife_stats[~np.isnan(jackknife_stats)]
+    if len(jk_valid) < 2:
+        return _percentile_ci(boot_stats, ci_level)
+    jk_mean = float(np.mean(jk_valid))
+    diffs = jk_mean - jk_valid
+    num = float(np.sum(diffs**3))
+    den = 6.0 * (float(np.sum(diffs**2))) ** 1.5
+    if den == 0.0:
+        return _percentile_ci(boot_stats, ci_level)
+    a = num / den
+
+    z_lo = float(norm.ppf(alpha / 2))
+    z_hi = float(norm.ppf(1 - alpha / 2))
+    alpha_lo = float(norm.cdf(z0 + (z0 + z_lo) / (1 - a * (z0 + z_lo))))
+    alpha_hi = float(norm.cdf(z0 + (z0 + z_hi) / (1 - a * (z0 + z_hi))))
+
+    # Guard against degenerate BCa end-points (e.g. alpha_lo > alpha_hi
+    # when a is very negative); fall back to percentile.
+    if not 0.0 <= alpha_lo < alpha_hi <= 1.0:
+        return _percentile_ci(boot_stats, ci_level)
+
+    lo = float(np.nanpercentile(boot_stats, 100 * alpha_lo))
+    hi = float(np.nanpercentile(boot_stats, 100 * alpha_hi))
+    return lo, hi
+
+
 def orientation_selectivity_significance(
     responses: npt.NDArray[np.float64],
     angles: npt.NDArray[np.float64],
     n_permutations: int = 1000,
     rng: np.random.Generator | int | None = None,
 ) -> dict:
-    """Test significance of orientation selectivity.
+    r"""Test significance of orientation selectivity via permutation.
 
-    Combines a permutation test (shuffle angle–response pairings and
-    recompute OSI) with a Rayleigh test for circular non-uniformity.
+    The canonical V1-literature significance test (Mazurek et al. 2014;
+    Niell & Stryker 2008): shuffle the (rate, angle) pairing
+    *n_permutations* times, recompute OSI on each shuffle, and report
+    the tail probability of the observed OSI under the resulting null
+    distribution.  This is the **non-parametric standard** for tuning
+    significance — unlike a parametric Rayleigh it makes no IID
+    assumption on the rate observations and adapts automatically to
+    the cell's actual noise structure.
+
+    The *p*-value uses the Phipson & Smyth (2010) ``+1`` correction:
+
+    .. math::
+
+        \hat{p} = \frac{1 + \#\{T_b \geq T_\text{obs}\}}{1 + B}
+
+    so the smallest reportable value is :math:`1/(B+1)` instead of
+    ``0``.  The previous estimator could return :math:`\hat{p} = 0`
+    even when the true tail probability is non-zero, which is
+    formally wrong and confuses downstream FDR procedures (an exact
+    ``0`` cannot be FDR-adjusted).
+
+    A Rayleigh statistic on the **doubled-angle, rate-weighted**
+    representation is still reported as ``p_rayleigh`` for legacy
+    consumers, but it is **non-standard** for tuning-curve
+    significance: a Rayleigh test assumes IID angle observations from
+    a single circular distribution, whereas a tuning curve is "rates
+    conditional on angle" with within-condition trial variance.  See
+    the function docstring of
+    :func:`~neural_cca.tuning.selectivity._rayleigh_test` for details.
+    Treat ``p_rayleigh`` as a descriptive concentration statistic,
+    not a calibrated tail probability.  ``is_significant`` now keys
+    off the permutation test alone.
 
     Args:
         responses: Mean firing rates at each orientation.
@@ -45,9 +166,29 @@ def orientation_selectivity_significance(
         Dict with keys:
 
         - ``"osi"`` — observed OSI
-        - ``"p_permutation"`` — permutation-test *p*-value
-        - ``"p_rayleigh"`` — Rayleigh-test *p*-value
-        - ``"is_significant"`` — ``True`` if both *p* < 0.05
+        - ``"p_permutation"`` — permutation *p*-value with the
+          Phipson & Smyth ``+1`` correction
+        - ``"p_rayleigh"`` — rate-weighted Rayleigh statistic
+          (descriptive; *not* a calibrated tail probability — see
+          above)
+        - ``"is_significant"`` — ``True`` if ``p_permutation < 0.05``
+
+    References:
+        Mazurek, M., Kager, M. & Van Hooser, S. D. (2014).  *Robust
+        quantification of orientation selectivity and direction
+        selectivity*.  Frontiers in Neural Circuits 8:92.
+        doi:10.3389/fncir.2014.00092.
+
+        Phipson, B. & Smyth, G. K. (2010).  *Permutation p-values
+        should never be zero: calculating exact p-values when
+        permutations are randomly drawn*.  Statistical Applications
+        in Genetics and Molecular Biology 9(1), Article 39.
+        doi:10.2202/1544-6115.1585.
+
+        Niell, C. M. & Stryker, M. P. (2008).  *Highly selective
+        receptive fields in mouse visual cortex*.  Journal of
+        Neuroscience 28(30), 7520–7536.
+        doi:10.1523/JNEUROSCI.0623-08.2008.
     """
     responses = np.asarray(responses, dtype=np.float64)
     angles = np.asarray(angles, dtype=np.float64)
@@ -77,9 +218,16 @@ def orientation_selectivity_significance(
         shuffled = rng.permutation(responses)
         null_osis[i] = dosi_circular_normalised(shuffled, angles)
 
-    p_perm = float(np.mean(null_osis >= observed_osi))
+    # Phipson & Smyth (2010) ``+1`` correction: avoids the
+    # ``p_perm = 0`` artefact for strongly-tuned cells.  The smallest
+    # value is now 1 / (n_permutations + 1).
+    n_ge = int(np.sum(null_osis >= observed_osi))
+    p_perm = (1 + n_ge) / (1 + n_permutations)
 
-    # Rayleigh test
+    # Rate-weighted Rayleigh — kept for backwards compatibility but
+    # explicitly *not* claimed to be a calibrated p-value any more.
+    # See the docstring of ``orientation_selectivity_significance`` and
+    # of ``_rayleigh_test`` for the rationale.
     angles_rad = np.deg2rad(angles)
     p_rayleigh = _rayleigh_test(2.0 * angles_rad, responses)
 
@@ -87,7 +235,7 @@ def orientation_selectivity_significance(
         "osi": float(observed_osi),
         "p_permutation": p_perm,
         "p_rayleigh": p_rayleigh,
-        "is_significant": p_perm < 0.05 and p_rayleigh < 0.05,
+        "is_significant": p_perm < 0.05,
     }
 
 
@@ -175,14 +323,32 @@ def bootstrap_ci(
     n_bootstrap: int = 1000,
     ci_level: float = 0.95,
     rng: np.random.Generator | int | None = None,
+    *,
+    method: str = "bca",
 ) -> dict:
-    """Bootstrap confidence interval for a *single-distribution* statistic.
+    r"""Bootstrap confidence interval for a *single-distribution* statistic.
 
     Resamples *data* with replacement, applies *stat_func* each time,
-    and reports the percentile confidence interval. ``stat_func`` must
-    be a function of one i.i.d. sample only — for example
-    ``np.mean``, ``np.std``, or any statistic that does not depend on
-    a paired label/condition.
+    and reports a confidence interval.  ``stat_func`` must be a
+    function of one i.i.d. sample only — for example ``np.mean``,
+    ``np.std``, or any statistic that does not depend on a paired
+    label/condition.
+
+    **Methods.**
+
+    - ``method="bca"`` (default, recommended) — bias-corrected and
+      accelerated CI (Efron 1987).  Second-order accurate and
+      transformation-respecting; the right choice for skewed or
+      boundary-bounded statistics like OSI / DSI in ``[0, 1]``.  Costs
+      one extra ``stat_func`` evaluation per data point (the
+      jackknife) which is negligible against ``n_bootstrap``
+      evaluations.
+    - ``method="percentile"`` — plain percentile CI.  First-order
+      accurate, not transformation-respecting; for symmetric
+      unbounded statistics (e.g. differences of means) the two
+      methods agree to a few percent.  Retained for backwards
+      compatibility and for cases where you explicitly want the
+      simpler estimator.
 
     .. note::
 
@@ -203,6 +369,8 @@ def bootstrap_ci(
         n_bootstrap: Number of bootstrap resamples.
         ci_level: Confidence level (e.g. 0.95 for 95% CI).
         rng: ``numpy.random.Generator``, integer seed, or ``None``.
+        method: ``"bca"`` (default, second-order accurate) or
+            ``"percentile"`` (first-order, legacy).
 
     Returns:
         Dict with keys:
@@ -211,7 +379,24 @@ def bootstrap_ci(
         - ``"ci_lower"`` — lower bound of CI
         - ``"ci_upper"`` — upper bound of CI
         - ``"se"`` — standard error of bootstrap distribution
+        - ``"method"`` — which CI method was used (``"bca"`` /
+          ``"percentile"``; falls back to ``"percentile"`` if BCa
+          could not be computed)
+
+    References:
+        Efron, B. (1987).  *Better bootstrap confidence intervals*.
+        JASA 82(397), 171–185.  doi:10.1080/01621459.1987.10478410.
+
+        DiCiccio, T. J. & Efron, B. (1996).  *Bootstrap confidence
+        intervals*.  Statistical Science 11(3), 189–212.
+        doi:10.1214/ss/1032280214.
+
+        Carpenter, J. & Bithell, J. (2000).  *Bootstrap confidence
+        intervals: when, which, what?  A practical guide for medical
+        statisticians*.  Statistics in Medicine 19(9), 1141–1164.
     """
+    if method not in ("bca", "percentile"):
+        raise ValueError(f"method must be 'bca' or 'percentile', got {method!r}.")
     data = np.asarray(data, dtype=np.float64)
     rng = make_rng(rng)
 
@@ -223,9 +408,6 @@ def bootstrap_ci(
         boot_stats[i] = stat_func(sample)
 
     # Drop failed iterations (degenerate resamples can leave NaNs).
-    # Without this guard, np.percentile and np.std propagate NaN and
-    # the entire CI dict becomes NaN.
-    alpha = 1.0 - ci_level
     valid = boot_stats[~np.isnan(boot_stats)]
     if len(valid) < 2:
         return {
@@ -233,9 +415,27 @@ def bootstrap_ci(
             "ci_lower": np.nan,
             "ci_upper": np.nan,
             "se": np.nan,
+            "method": method,
         }
-    ci_lower = float(np.nanpercentile(boot_stats, 100 * alpha / 2))
-    ci_upper = float(np.nanpercentile(boot_stats, 100 * (1 - alpha / 2)))
+
+    if method == "bca":
+        # Jackknife distribution: leave-one-out estimates of the
+        # statistic.  Used for the acceleration term.
+        n = len(data)
+        jackknife_stats = np.empty(n, dtype=np.float64)
+        for i in range(n):
+            jackknife_stats[i] = stat_func(np.delete(data, i))
+        ci_lower, ci_upper = _bca_ci(estimate, boot_stats, jackknife_stats, ci_level)
+        used_method = "bca"
+        # Sentinel for fallback: if BCa returned NaN end-points
+        # because of a degenerate distribution, fall back gracefully.
+        if not (np.isfinite(ci_lower) and np.isfinite(ci_upper)):
+            ci_lower, ci_upper = _percentile_ci(boot_stats, ci_level)
+            used_method = "percentile"
+    else:
+        ci_lower, ci_upper = _percentile_ci(boot_stats, ci_level)
+        used_method = "percentile"
+
     se = float(np.nanstd(boot_stats, ddof=1))
 
     return {
@@ -243,6 +443,7 @@ def bootstrap_ci(
         "ci_lower": ci_lower,
         "ci_upper": ci_upper,
         "se": se,
+        "method": used_method,
     }
 
 
@@ -253,8 +454,10 @@ def bootstrap_ci_strata(
     n_bootstrap: int = 1000,
     ci_level: float = 0.95,
     rng: np.random.Generator | int | None = None,
+    *,
+    method: str = "bca",
 ) -> dict:
-    """Stratified bootstrap CI for a (data, label) statistic.
+    r"""Stratified bootstrap CI for a (data, label) statistic.
 
     For each iteration, resamples *data* with replacement *within
     each stratum* (preserving the per-stratum sample size and the
@@ -270,6 +473,13 @@ def bootstrap_ci_strata(
     array. Plain :func:`bootstrap_ci` would draw across labels and
     destroy that pairing.
 
+    See :func:`bootstrap_ci` for the ``method`` argument: ``"bca"``
+    (default) gives a second-order-accurate, transformation-respecting
+    interval (Efron 1987), which is what you want for boundary-bounded
+    statistics like OSI / DSI / gOSI / gDSI in ``[0, 1]``.  The BCa
+    jackknife here is performed on the *trials* (one trial held out
+    at a time) so it remains consistent with the stratified resample.
+
     Args:
         data: 1-D values, one per observation (e.g. trial firing
             rate). Must be the same length as *strata*.
@@ -281,15 +491,29 @@ def bootstrap_ci_strata(
         n_bootstrap: Number of bootstrap resamples.
         ci_level: Confidence level (e.g. 0.95 for 95 % CI).
         rng: ``numpy.random.Generator``, integer seed, or ``None``.
+        method: ``"bca"`` (default, recommended for OSI/DSI in
+            ``[0, 1]``) or ``"percentile"``.
 
     Returns:
         Dict with keys ``"estimate"``, ``"ci_lower"``, ``"ci_upper"``,
-        ``"se"``. ``ci_lower`` / ``ci_upper`` / ``se`` are NaN if
-        fewer than two iterations produced finite values.
+        ``"se"``, ``"method"``. ``ci_lower`` / ``ci_upper`` / ``se``
+        are NaN if fewer than two iterations produced finite values.
 
     Raises:
-        ValueError: If *data* and *strata* have different lengths.
+        ValueError: If *data* and *strata* have different lengths, or
+            if *method* is unknown.
+
+    References:
+        Efron, B. (1987).  *Better bootstrap confidence intervals*.
+        JASA 82(397), 171–185.  doi:10.1080/01621459.1987.10478410.
+
+        Mazurek, M., Kager, M. & Van Hooser, S. D. (2014).  *Robust
+        quantification of orientation selectivity and direction
+        selectivity*.  Frontiers in Neural Circuits 8:92.
+        doi:10.3389/fncir.2014.00092.
     """
+    if method not in ("bca", "percentile"):
+        raise ValueError(f"method must be 'bca' or 'percentile', got {method!r}.")
     data = np.asarray(data, dtype=np.float64)
     strata = np.asarray(strata)
     if data.shape != strata.shape:
@@ -325,12 +549,32 @@ def bootstrap_ci_strata(
             "ci_lower": np.nan,
             "ci_upper": np.nan,
             "se": np.nan,
+            "method": method,
         }
 
-    alpha = 1.0 - ci_level
+    if method == "bca":
+        # Stratified jackknife: leave one trial out at a time.  Note
+        # that the stratum sizes shrink by one for the affected
+        # stratum; this is the standard handling.
+        n = len(data)
+        jackknife_stats = np.empty(n, dtype=np.float64)
+        for i in range(n):
+            mask = np.ones(n, dtype=bool)
+            mask[i] = False
+            jackknife_stats[i] = stat_func(data[mask], strata[mask])
+        ci_lower, ci_upper = _bca_ci(estimate, boot_stats, jackknife_stats, ci_level)
+        used_method = "bca"
+        if not (np.isfinite(ci_lower) and np.isfinite(ci_upper)):
+            ci_lower, ci_upper = _percentile_ci(boot_stats, ci_level)
+            used_method = "percentile"
+    else:
+        ci_lower, ci_upper = _percentile_ci(boot_stats, ci_level)
+        used_method = "percentile"
+
     return {
         "estimate": estimate,
-        "ci_lower": float(np.nanpercentile(boot_stats, 100 * alpha / 2)),
-        "ci_upper": float(np.nanpercentile(boot_stats, 100 * (1 - alpha / 2))),
+        "ci_lower": ci_lower,
+        "ci_upper": ci_upper,
         "se": float(np.nanstd(boot_stats, ddof=1)),
+        "method": used_method,
     }

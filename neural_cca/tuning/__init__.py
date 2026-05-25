@@ -29,7 +29,14 @@ from .population import (
     orientation_map_statistics,
     signal_correlations,
 )
-from .selectivity import circular_variance, dosi_circular_normalised, gdsi, gosi
+from .selectivity import (
+    circular_variance,
+    dosi_circular_normalised,
+    dsi_two_point,
+    gdsi,
+    gosi,
+    osi_two_point,
+)
 from .statistics import (
     anova_across_orientations,
     bootstrap_ci,
@@ -60,6 +67,8 @@ __all__ = [
     "circular_variance",
     "gosi",
     "gdsi",
+    "osi_two_point",
+    "dsi_two_point",
     # tuning
     "tuning_bandwidth",
     "compute_f0_f1_f2",

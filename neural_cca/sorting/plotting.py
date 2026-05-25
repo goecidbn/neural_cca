@@ -13,7 +13,7 @@ from scipy import stats as sp_stats
 # part of the same distribution and have no back-edge to sorting,
 # so importing them at module top is safe and replaces the previous
 # in-function ``try/except ImportError``.
-from ..sta.analysis import calc_mfr_trial
+from ..spike_train.analysis import calc_mfr_trial
 from ..tuning.plotting import orientation_scatter_vm
 from .containers import SortingData
 from .metrics import d_prime_pairwise_matrix

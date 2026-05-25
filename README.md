@@ -5,6 +5,22 @@
 
 Minimal analysis package and repo for common analysis tasks on neural data from extracellular recordings.
 
+## Scope
+
+`neural_cca` operates on **already-detected, single-channel waveform
+snippets** with paired spike times and trial / stimulus metadata.
+It is intended for medium-scale recordings (a few channels, tens of
+clusters, hundreds to low-thousands of trials) where the analysis
+workflow is "load spikes, sort, characterise tuning". More powerful
+internals — multi-channel template features, drift correction,
+density-based clustering, spike-triggered receptive-field estimation —
+are planned for future releases and will be additive (no API breakage
+for the current single-channel pipeline). The scope statement here is
+deliberately tool-agnostic: if your recording exceeds what
+`neural_cca` handles today, any modern probe-scale sorter is
+appropriate upstream of this package's tuning / quality / population
+analyses.
+
 ## Subpackages
 
 ### `sorting` — Spike Sorting
@@ -15,7 +31,7 @@ KMeans-based spike clustering pipeline with automatic k-selection via silhouette
 - **Quality metrics**: silhouette score, SNR (per-cluster and weighted), refractory period violations (RPVs), isolation distance, L-ratio, d-prime, peak amplitude SNR, waveform stability, amplitude drift, fraction missing
 - **Batch processing**: xarray/zarr-backed multi-recording pipelines with trial-angle mapping
 
-### `sta` — Spike Train Analysis
+### `spike_train` — Spike Train Statistics (previously `sta`)
 
 Single-unit and multi-unit spike train statistics covering firing rate, variability, temporal structure, and trial-level reliability.
 
@@ -28,13 +44,13 @@ Single-unit and multi-unit spike train statistics covering firing rate, variabil
 
 Comprehensive orientation/direction tuning analysis for visual neuroscience experiments.
 
-- **Selectivity indices**: OSI, DSI (circular vector-sum), gOSI, gDSI (ratio-based), circular variance — all with optional Rayleigh-test p-values
+- **Selectivity indices**: vector-sum / "global" OSI, DSI, gOSI, gDSI (the modern Mazurek 2014 convention; gOSI ≡ 1 − circular variance), the explicit two-point Niell & Stryker (2008) ratios `osi_two_point` / `dsi_two_point`, and the circular variance (Ringach 2002).  Permutation-test significance via `orientation_selectivity_significance` (Phipson & Smyth 2010 corrected); rate-weighted Rayleigh available as a descriptive companion statistic.
 - **Curve fitting**: von Mises (with internal two-bump direction variant) and double Gaussian fits with R² goodness-of-fit and interpolated preferred orientation
 - **Harmonic analysis**: F0/F1/F2 decomposition, F1 phase extraction, modulation ratio per orientation, simple/complex cell classification
 - **Temporal frequency**: TF tuning curves with log-Gaussian fit, preferred TF, bandwidth
 - **Cross-orientation**: suppression index (proxy from tuning curve)
 - **Population**: orientation map statistics (Rayleigh test for uniformity), signal correlations (tuning curve similarity), noise correlations (trial-to-trial co-variability)
-- **Statistical testing**: permutation + Rayleigh test for selectivity significance, one-way ANOVA across orientations, bootstrap confidence intervals
+- **Statistical testing**: permutation-test selectivity significance (Phipson & Smyth 2010 corrected, with a rate-weighted Rayleigh statistic returned alongside as a descriptive companion), one-way ANOVA across orientations, BCa-default bootstrap confidence intervals (`method="bca"` — Efron 1987, second-order accurate for boundary-bounded statistics like OSI/DSI)
 - **Composite function**: `get_os_metrics()` 
 — all-in-one metrics with optional fitting, p-values, gOSI/gDSI, and bootstrap CIs
 
@@ -92,7 +108,7 @@ Full API reference at [GitHub Pages](https://goecidbn.github.io/neural_cca/).
   - [ ] add direction and "not only" orientation selective example
   - [ ] add inter trial variability
   - [ ] add example where spikes are not starting with stimulus onset
-- [ ] potentially combine examples with the STA tools
+- [ ] potentially combine examples with the spike-train statistics module
 
 
 ## License

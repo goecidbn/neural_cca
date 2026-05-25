@@ -1,10 +1,53 @@
-"""Orientation and direction selectivity indices.
+r"""Orientation and direction selectivity indices.
 
-Implements circular-statistics-based selectivity metrics (OSI, DSI,
-gOSI, gDSI, circular variance) using complex exponential vector sums.
+Two families of metrics, distinguished by whether they use the **whole
+tuning curve** (vector sum across all orientations) or only **two
+points** (the preferred orientation and its orthogonal / null
+counterpart).  The modern V1 literature (Mazurek, Kager & Van Hooser
+2014) prefers the vector-sum family because it is robust to noise on
+single bins.
 
-Optional ``p_value=True`` on all public functions adds a Rayleigh-test
-*p*-value to the return value (returned as a dict instead of a bare float).
+**Vector-sum (global) family.**
+
+- :func:`dosi_circular_normalised` — the primary implementation;
+  computes :math:`|\sum_\theta R(\theta) e^{2i\theta}| / \sum R(\theta)`
+  for orientation, single-angle for direction.
+- :func:`circular_variance` — Ringach 2002 definition,
+  ``CirVar = 1 - dosi_circular_normalised``.
+- :func:`gosi` — **alias** for ``dosi_circular_normalised(...)`` (the
+  *global* OSI in the modern convention; equal to ``1 - CirVar``).
+- :func:`gdsi` — **alias** for the direction variant
+  (``dosi_circular_normalised(..., direction_selectivity=True)``).
+
+**Two-point family.**
+
+- :func:`osi_two_point` — Niell & Stryker 2008 two-point ratio
+  :math:`(R_\text{pref} - R_\text{orth}) / (R_\text{pref} + R_\text{orth})`,
+  where the preferred orientation is found via the vector-sum (not
+  the noisiest single bin).
+- :func:`dsi_two_point` — direction analogue using
+  :math:`R_\text{null} = R(\theta_\text{pref} + 180°)`.
+
+The two-point ratios coincide with the vector-sum values only when
+the tuning curve is well-described by a single cosine bump; in
+general they differ, and reviewers will want both numbers if you
+report either.  Reach for the vector-sum family by default.
+
+References:
+    Mazurek, M., Kager, M. & Van Hooser, S. D. (2014).  *Robust
+    quantification of orientation selectivity and direction
+    selectivity*.  Frontiers in Neural Circuits 8:92.
+    doi:10.3389/fncir.2014.00092.
+
+    Ringach, D. L., Shapley, R. M. & Hawken, M. J. (2002).
+    *Orientation selectivity in macaque V1: diversity and laminar
+    dependence*.  Journal of Neuroscience 22(13), 5639–5651.
+    doi:10.1523/JNEUROSCI.22-13-05639.2002.
+
+    Niell, C. M. & Stryker, M. P. (2008).  *Highly selective
+    receptive fields in mouse visual cortex*.  Journal of
+    Neuroscience 28(30), 7520–7536.
+    doi:10.1523/JNEUROSCI.0623-08.2008.
 """
 
 from __future__ import annotations
@@ -19,6 +62,8 @@ __all__ = [
     "circular_variance",
     "gosi",
     "gdsi",
+    "osi_two_point",
+    "dsi_two_point",
 ]
 
 
@@ -171,43 +216,66 @@ def circular_variance(
     return 1.0 - dosi_circular_normalised(responses, angles)
 
 
-def gosi(
+def osi_two_point(
     responses: npt.NDArray[np.float64],
     angles: npt.NDArray[np.float64],
     p_value: bool = False,
 ) -> float | dict:
-    r"""Global orientation selectivity index (gOSI).
+    r"""Two-point orientation selectivity index (Niell & Stryker 2008).
 
     .. math::
 
-        \text{gOSI} = \frac{R_\text{pref} - R_\text{orth}}
-                            {R_\text{pref} + R_\text{orth}}
+        \text{OSI}_\text{2pt} = \frac{R_\text{pref} - R_\text{orth}}
+                                       {R_\text{pref} + R_\text{orth}}
 
     where :math:`R_\text{pref}` is the response at the preferred
-    orientation and :math:`R_\text{orth}` is the mean of the two
-    responses at ±90° from the preferred orientation.
+    orientation and :math:`R_\text{orth}` is the response at the
+    orthogonal orientation (preferred + 90°).  The preferred
+    orientation is found via the vector-sum (response-weighted
+    circular mean), **not** the noisiest single bin (argmax).
+
+    Note that "two-point" in the name is descriptive: only two
+    samples of the tuning curve enter the ratio, making this metric
+    sensitive to noise in those two specific bins.  For the global
+    (whole-tuning-curve) OSI use :func:`gosi` /
+    :func:`dosi_circular_normalised`.
 
     Args:
         responses: Mean firing rates at each orientation.
         angles: Stimulus angles in degrees.
-        p_value: If ``True`` return ``{"value": float, "p_value": float}``
-            with a Rayleigh test *p*-value.
+        p_value: If ``True`` return ``{"value": float, "p_value": float}``.
+            The reported *p_value* is a rate-weighted Rayleigh statistic
+            that is **not** a calibrated tail probability for tuning
+            significance — see
+            :func:`~neural_cca.tuning.statistics.orientation_selectivity_significance`
+            for the V1-literature-standard permutation test.
 
     Returns:
-        gOSI (float in [-1, 1]) or dict when ``p_value=True``.
+        OSI two-point (float in [-1, 1]) or dict when ``p_value=True``.
+
+    References:
+        Niell, C. M. & Stryker, M. P. (2008).  *Highly selective
+        receptive fields in mouse visual cortex*.  Journal of
+        Neuroscience 28(30), 7520–7536.
+        doi:10.1523/JNEUROSCI.0623-08.2008.
+
+        Mazurek, M., Kager, M. & Van Hooser, S. D. (2014).  *Robust
+        quantification of orientation selectivity and direction
+        selectivity*.  Frontiers in Neural Circuits 8:92.
+        doi:10.3389/fncir.2014.00092.
     """
     responses = np.asarray(responses, dtype=np.float64)
     angles = np.asarray(angles, dtype=np.float64)
 
     # Preferred orientation via the response-weighted circular mean (the
     # vector-sum estimator).  Earlier versions used ``argmax(responses)``
-    # — winner-take-all on the noisiest single bin — which made gOSI
-    # depend on whichever orientation happened to fire most rather than
-    # on the underlying tuning curve.  Vector-sum is the convention
+    # — winner-take-all on the noisiest single bin — which made the
+    # ratio depend on whichever orientation happened to fire most rather
+    # than on the underlying tuning curve.  Vector-sum is the convention
     # already used by ``preferred_dori`` and is robust to noise.
     pref_angle = circ_mean(angles, weights=responses, period=180.0)
     if np.isnan(pref_angle):
-        # Silent neuron (zero resultant vector) — gOSI is undefined.
+        # Silent neuron (zero resultant vector) — undefined.
         if p_value:
             angles_rad = np.deg2rad(angles)
             return {
@@ -221,12 +289,10 @@ def gosi(
     # Orthogonal = pref + 90° in orientation space.  ``+90`` and
     # ``−90`` from the preferred orientation fold to the *same* angle
     # modulo 180° (``wrap180(p+90) == wrap180(p-90)``), so a single
-    # lookup suffices — the previous "average of two lookups" was
-    # algebraically identical to one lookup and amounted to dead code.
-    # ``period=180`` is essential here: the default 360° period would
-    # treat orientation wraparound as if 0° and 180° were distinct,
-    # picking the wrong sample for any preferred orientation near the
-    # 0°/180° seam.
+    # lookup suffices.  ``period=180`` is essential here: the default
+    # 360° period would treat orientation wraparound as if 0° and 180°
+    # were distinct, picking the wrong sample for any preferred
+    # orientation near the 0°/180° seam.
     orth_angle = wrap180(pref_angle + 90)
     orth_idx = int(np.argmin(circ_dist(angles, orth_angle, period=180.0)))
     r_orth = float(responses[orth_idx])
@@ -243,39 +309,55 @@ def gosi(
     return value
 
 
-def gdsi(
+def dsi_two_point(
     responses: npt.NDArray[np.float64],
     angles: npt.NDArray[np.float64],
     p_value: bool = False,
 ) -> float | dict:
-    r"""Global direction selectivity index (gDSI).
+    r"""Two-point direction selectivity index (Niell & Stryker 2008).
 
     .. math::
 
-        \text{gDSI} = \frac{R_\text{pref} - R_\text{null}}
-                            {R_\text{pref} + R_\text{null}}
+        \text{DSI}_\text{2pt} = \frac{R_\text{pref} - R_\text{null}}
+                                       {R_\text{pref} + R_\text{null}}
 
     where :math:`R_\text{null}` is the response at the preferred
-    direction + 180°.
+    direction + 180°.  The preferred direction is found via the
+    vector-sum over 360° (not argmax).
+
+    For the global (vector-sum, whole-tuning-curve) direction
+    selectivity use :func:`gdsi` /
+    :func:`dosi_circular_normalised(..., direction_selectivity=True)`.
 
     Args:
         responses: Mean firing rates at each direction.
         angles: Stimulus directions in degrees.
-        p_value: If ``True`` return ``{"value": float, "p_value": float}``
-            with a Rayleigh test *p*-value.
+        p_value: See :func:`osi_two_point` — *p_value* is a
+            rate-weighted Rayleigh and is **not** a calibrated tail
+            probability for direction-tuning significance.
 
     Returns:
-        gDSI (float in [-1, 1]) or dict when ``p_value=True``.
+        DSI two-point (float in [-1, 1]) or dict when ``p_value=True``.
+
+    References:
+        Niell, C. M. & Stryker, M. P. (2008).  *Highly selective
+        receptive fields in mouse visual cortex*.  Journal of
+        Neuroscience 28(30), 7520–7536.
+        doi:10.1523/JNEUROSCI.0623-08.2008.
+
+        Mazurek, M., Kager, M. & Van Hooser, S. D. (2014).  *Robust
+        quantification of orientation selectivity and direction
+        selectivity*.  Frontiers in Neural Circuits 8:92.
+        doi:10.3389/fncir.2014.00092.
     """
     responses = np.asarray(responses, dtype=np.float64)
     angles = np.asarray(angles, dtype=np.float64)
 
     # Preferred direction via the response-weighted circular mean
-    # (vector sum) over the full 360° circle.  See ``gosi`` for the
-    # reasoning behind replacing the previous ``argmax`` winner-take-all.
+    # (vector sum) over the full 360° circle.
     pref_angle = circ_mean(angles, weights=responses, period=360.0)
     if np.isnan(pref_angle):
-        # Silent neuron — gDSI is undefined.
+        # Silent neuron — undefined.
         if p_value:
             angles_rad = np.deg2rad(angles)
             return {
@@ -304,3 +386,102 @@ def gdsi(
         pval = _rayleigh_test(angles_rad, responses)
         return {"value": value, "p_value": pval}
     return value
+
+
+# ---------------------------------------------------------------------------
+# Modern global-OSI / gDSI aliases.  Defined *after* osi_two_point /
+# dsi_two_point so docstrings can cross-reference both.
+# ---------------------------------------------------------------------------
+
+
+def gosi(
+    responses: npt.NDArray[np.float64],
+    angles: npt.NDArray[np.float64],
+    p_value: bool = False,
+) -> float | dict:
+    r"""Global orientation selectivity index (vector-sum / 1 − CirVar).
+
+    .. math::
+
+        \text{gOSI} = \frac{\bigl|\sum_\theta R(\theta)\,
+            e^{2i\theta}\bigr|}{\sum_\theta R(\theta)} = 1 - \text{CirVar}
+
+    This is the **modern V1-literature standard** for "OSI"
+    (Mazurek, Kager & Van Hooser 2014; Ringach, Shapley & Hawken
+    2002): a global measure using *all* tuning-curve samples,
+    robust to single-bin noise.  Use this by default.
+
+    For the two-point ratio :math:`(R_\text{pref} - R_\text{orth}) /
+    (R_\text{pref} + R_\text{orth})` (Niell & Stryker 2008) see
+    :func:`osi_two_point`.
+
+    This function is a thin alias for
+    :func:`dosi_circular_normalised` with the orientation default —
+    the implementations cannot drift apart.
+
+    Args:
+        responses: Mean firing rates at each orientation.
+        angles: Stimulus angles in degrees.
+        p_value: See :func:`dosi_circular_normalised`.  Note that the
+            reported *p_value* is descriptive, not a calibrated tail
+            probability — use
+            :func:`~neural_cca.tuning.statistics.orientation_selectivity_significance`
+            for permutation-test significance.
+
+    Returns:
+        gOSI (float in ``[0, 1]``) or dict when ``p_value=True``.
+
+    References:
+        Mazurek, M., Kager, M. & Van Hooser, S. D. (2014).  *Robust
+        quantification of orientation selectivity and direction
+        selectivity*.  Frontiers in Neural Circuits 8:92.
+        doi:10.3389/fncir.2014.00092.
+
+        Ringach, D. L., Shapley, R. M. & Hawken, M. J. (2002).
+        *Orientation selectivity in macaque V1: diversity and
+        laminar dependence*.  Journal of Neuroscience 22(13),
+        5639–5651.  doi:10.1523/JNEUROSCI.22-13-05639.2002.
+    """
+    return dosi_circular_normalised(responses, angles, p_value=p_value)
+
+
+def gdsi(
+    responses: npt.NDArray[np.float64],
+    angles: npt.NDArray[np.float64],
+    p_value: bool = False,
+) -> float | dict:
+    r"""Global direction selectivity index (vector-sum over 360°).
+
+    .. math::
+
+        \text{gDSI} = \frac{\bigl|\sum_\theta R(\theta)\,
+            e^{i\theta}\bigr|}{\sum_\theta R(\theta)}
+
+    Whole-tuning-curve direction selectivity (the modern convention,
+    Mazurek 2014).  For the two-point ratio
+    :math:`(R_\text{pref} - R_\text{null}) / (R_\text{pref} + R_\text{null})`
+    see :func:`dsi_two_point`.
+
+    Thin alias for ``dosi_circular_normalised(responses, angles,
+    direction_selectivity=True, p_value=...)``.
+
+    Args:
+        responses: Mean firing rates at each direction.
+        angles: Stimulus directions in degrees.
+        p_value: See :func:`dosi_circular_normalised`.
+
+    Returns:
+        gDSI (float in ``[0, 1]``) or dict when ``p_value=True``.
+
+    References:
+        Mazurek, M., Kager, M. & Van Hooser, S. D. (2014).  *Robust
+        quantification of orientation selectivity and direction
+        selectivity*.  Frontiers in Neural Circuits 8:92.
+        doi:10.3389/fncir.2014.00092.
+    """
+    return dosi_circular_normalised(
+        responses,
+        angles,
+        direction_selectivity=True,
+        p_value=p_value,
+    )

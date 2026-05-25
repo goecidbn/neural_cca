@@ -74,6 +74,18 @@ def make_rng(
 
     Returns:
         A ``numpy.random.Generator`` backed by ``PCG64DXSM``.
+
+    References:
+        O'Neill, M. E. (2014).  *PCG: A family of simple fast
+        space-efficient statistically good algorithms for random
+        number generation*.  Harvey Mudd College Technical Report
+        HMC-CS-2014-0905.
+        https://www.pcg-random.org/paper.html
+
+        NumPy issue #16313 — known PCG64 parallel-stream
+        self-correlation (the reason this package uses the DXSM
+        output-function variant):
+        https://github.com/numpy/numpy/issues/16313
     """
     if isinstance(seed, np.random.Generator):
         return seed

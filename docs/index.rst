@@ -28,13 +28,14 @@ for extracellular neural recordings.
       (von Mises, double Gaussian), F0/F1/F2 harmonic modulation,
       population statistics, and bootstrap significance tests.
 
-   .. grid-item-card:: Spike Train Analysis
-      :link: api/sta
+   .. grid-item-card:: Spike Train Statistics
+      :link: api/spike_train
       :link-type: doc
 
       Mean firing rates, ISI statistics, CV, LvR, Fano factor,
-      autocorrelograms, PSTHs, first-spike latency, and
-      trial-to-trial reliability.
+      autocorrelograms, PSTHs, first-spike latency (incl. the
+      response-detection ``_thresholded`` variant), and
+      trial-to-trial reliability.  Previously called ``sta``.
 
 Quick start
 -----------

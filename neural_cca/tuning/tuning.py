@@ -22,7 +22,14 @@ from .fitting import (
 from .fitting import (
     von_mises_fit as _vm_fit,
 )
-from .selectivity import circular_variance, dosi_circular_normalised, gdsi, gosi
+from .selectivity import (
+    circular_variance,
+    dosi_circular_normalised,
+    dsi_two_point,
+    gdsi,
+    gosi,
+    osi_two_point,
+)
 from .statistics import (
     anova_across_orientations as _anova,
 )
@@ -80,9 +87,12 @@ class OsMetricsResult(TypedDict, total=False):
     f2_f0: np.ndarray
     f2_f1: np.ndarray
 
-    # gOSI / gDSI (compute_gosi=True)
+    # gOSI / gDSI (compute_gosi=True) — vector-sum / "global" forms.
     gosi: float
     gdsi: float
+    # Two-point Niell & Stryker (2008) forms (compute_gosi=True).
+    osi_two_point: float
+    dsi_two_point: float
 
     # Significance (compute_p_values=True)
     osi_p_value: float
@@ -123,34 +133,81 @@ def _gauss(x: npt.ArrayLike, a: float, x0: float, sigma: float, b: float) -> np.
 def tuning_bandwidth(
     responses: npt.NDArray[np.float64],
     orientations: npt.NDArray[np.float64],
+    *,
+    method: str = "von_mises",
 ) -> float:
-    """Half-width at half-height (HWHH) of a Gaussian-fitted tuning curve.
+    r"""Half-width at half-height (HWHH) of an orientation tuning curve.
 
-    Warning:
-        Orientations are treated linearly (not circularly).  If the
-        preferred orientation is near 0 deg or 180 deg the fit may be
-        poor because the Gaussian does not wrap around.
+    By default (``method="von_mises"``, *recommended*) the bandwidth is
+    derived from a **circular von Mises fit** in orientation space
+    (period 180°), which is the empirically best-fitting parametric
+    model for V1 orientation tuning (Swindale 1998).  The von Mises
+    handles wraparound correctly, so a cell with preferred orientation
+    near 0° or 180° gets the same HWHH it would at 90°.
+
+    The legacy linear-Gaussian path remains available via
+    ``method="gaussian"`` for reproducing older results, but it is
+    **biased** for preferred orientations near 0°/180°: the Gaussian
+    has no periodic extension, so half the tuning bump is truncated at
+    the angle-axis boundary and ``curve_fit`` underestimates the
+    width.  The bias is systematic with preferred orientation and
+    can contaminate population HWHH distributions; do not use this
+    method when reporting bandwidth statistics across a population.
 
     Args:
         responses: Firing rates at each orientation.
         orientations: Orientations in degrees.
+        method: ``"von_mises"`` (default, recommended) — circular fit
+            via :func:`~neural_cca.tuning.fitting.von_mises_fit` with
+            ``tuning_type="orientation"``.  ``"gaussian"`` — legacy
+            linear Gaussian fit (biased near 0°/180°, retained for
+            backwards compatibility).
 
     Returns:
         HWHH in degrees, or ``np.inf`` if the fit fails or responses
         are flat.
+
+    References:
+        Swindale, N. V. (1998).  *Orientation tuning curves: empirical
+        description and estimation of parameters*.  Biological
+        Cybernetics 78(1), 45–56.  doi:10.1007/s004220050411.
+
+        Mazurek, M., Kager, M. & Van Hooser, S. D. (2014).  *Robust
+        quantification of orientation selectivity and direction
+        selectivity*.  Frontiers in Neural Circuits 8:92.
+        doi:10.3389/fncir.2014.00092.
     """
-    if np.allclose(responses, responses[0]):
-        return np.inf
-    a0 = np.max(responses) - np.min(responses)
-    x0 = orientations[np.argmax(responses)]
-    sigma0 = 20.0
-    b0 = np.min(responses)
-    try:
-        popt, _ = curve_fit(_gauss, orientations, responses, p0=[a0, x0, sigma0, b0])
-    except RuntimeError:
-        return np.inf
-    sigma = abs(popt[2])
-    return float(sigma * np.sqrt(2 * np.log(2)))
+    if method == "von_mises":
+        # Delayed import keeps the top-level import graph tidy
+        # (``fitting`` already imports from this module's siblings).
+        from .fitting import von_mises_fit
+
+        if np.allclose(responses, responses[0]):
+            return np.inf
+        fit = von_mises_fit(responses, orientations, tuning_type="orientation")
+        hwhh = fit["bandwidth_hwhh"]
+        # ``bandwidth_hwhh`` is NaN on fit failure; surface ``inf`` for
+        # backwards compatibility with the legacy contract.
+        return float(hwhh) if np.isfinite(hwhh) else np.inf
+
+    if method == "gaussian":
+        if np.allclose(responses, responses[0]):
+            return np.inf
+        a0 = np.max(responses) - np.min(responses)
+        x0 = orientations[np.argmax(responses)]
+        sigma0 = 20.0
+        b0 = np.min(responses)
+        try:
+            popt, _ = curve_fit(_gauss, orientations, responses, p0=[a0, x0, sigma0, b0])
+        except RuntimeError:
+            return np.inf
+        sigma = abs(popt[2])
+        return float(sigma * np.sqrt(2 * np.log(2)))
+
+    raise ValueError(
+        f"Unknown method {method!r}.  Choose 'von_mises' (default, "
+        "recommended) or 'gaussian' (legacy, biased near 0°/180°)."
+    )
 
 
 def compute_f0_f1_f2(
@@ -380,10 +437,18 @@ def get_os_metrics(
 
     # --- v0.3.0 extensions ---
 
-    # gOSI / gDSI
+    # gOSI / gDSI (vector-sum / "global") and the two-point variants.
+    # Both families are reported when ``compute_gosi=True`` because a
+    # methods-section reader can pick whichever convention their
+    # reference paper uses without re-running the analysis — and the
+    # two numbers diverge whenever the tuning curve is not a single
+    # cosine bump.  See ``selectivity.py`` module docstring for the
+    # naming convention.
     if compute_gosi:
         _r["gosi"] = gosi(mfrs, angles)
         _r["gdsi"] = gdsi(mfrs, angles)
+        _r["osi_two_point"] = osi_two_point(mfrs, angles)
+        _r["dsi_two_point"] = dsi_two_point(mfrs, angles)
 
     # P-values via Rayleigh test (+ ANOVA)
     if compute_p_values:

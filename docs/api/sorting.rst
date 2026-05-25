@@ -31,23 +31,41 @@ axes:
 
 * *Feature-space separation* — silhouette score,
   :func:`isolation_distance` (Harris et al. 2000),
-  :func:`l_ratio`, and :func:`d_prime` (signal-detection-theory
-  cluster separation).  Cluster covariances are estimated with the
-  **Ledoit–Wolf shrinkage estimator**; see
-  :func:`_ledoit_wolf_precision` for the rationale.  All four
-  metrics live in the same feature space the clustering used.
+  :func:`l_ratio` (Schmitzer-Torbert et al. 2005), and
+  :func:`d_prime` (signal-detection-theory cluster separation).
+  Cluster covariances are estimated with the **Ledoit–Wolf
+  shrinkage estimator**; see :func:`_ledoit_wolf_precision` for the
+  rationale.  All four metrics live in the same feature space the
+  clustering used.  ``isolation_distance`` and ``l_ratio`` accept
+  ``mode="worst_pair"`` (Sibille et al. 2024) to report the
+  worst-neighbour value instead of pooling all non-cluster spikes —
+  the modern best-practice convention used by the Allen Institute
+  ``ecephys_spike_sorting`` pipeline.  Default is the original
+  ``mode="global"`` (Harris / Schmitzer-Torbert).
 * *Amplitude / shape* — :func:`est_snr` (peak-to-peak vs. residual
   std), :func:`peak_amplitude_snr` (peak vs. baseline std),
   :func:`waveform_stability` (early-vs-late mean-waveform
   Pearson *r*), :func:`amplitude_drift` (Spearman of peak amplitude
-  vs. spike index), and :func:`fraction_missing` (Gaussian-tail
-  estimate of spikes lost below the detection threshold).  These
-  operate on the *raw* waveforms because voltage amplitude is only
-  defined there.
-* *Refractory contract* — :func:`rpvs` counts inter-spike intervals
-  shorter than ``refractory_period`` (default 1 ms).  The
-  package-wide convention is the strict ``<`` rule: a pair separated
-  by *exactly* the refractory period is not a violation.
+  vs. spike index), and :func:`fraction_missing` (tail estimate of
+  spikes lost below the detection threshold).  ``fraction_missing``
+  ships three methods: ``method="gaussian"`` (default; Hill 2011 /
+  Allen Institute convention, the universally reported number),
+  ``method="lognormal"`` (better-calibrated for the typical V1
+  lognormal amplitude distribution; Buzsáki & Mizuseki 2014), and
+  ``method="empirical"`` (non-parametric Gaussian-KDE tail
+  extrapolation; Silverman 1986).  These operate on the *raw*
+  waveforms because voltage amplitude is only defined there.
+* *Refractory contract* — :func:`rpvs` reports the
+  SpikeInterface-style "violations per spike" rate, while
+  :func:`contamination_rate_hill` returns the calibrated Hill et
+  al. (2011) contamination *fraction* :math:`C \in [0, 0.5]` — the
+  metric reviewers expect when methods sections quote
+  "contamination < X %".  Both are scored at the
+  ``refractory_period`` default of 1 ms with the strict ``<`` rule
+  (a pair at exactly the refractory period is not a violation).
+  ``contamination_rate_hill`` is wired into
+  :func:`evaluate_sorting` so the standard quality dict carries it
+  alongside ``abs_rpvs`` / ``rel_rpvs``.
 
 **Single-cluster mode (k=1).**  ``run_sorting_pipeline(n_clusters=1)``
 is a first-class supported path for pre-isolated single-unit

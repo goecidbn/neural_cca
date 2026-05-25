@@ -132,7 +132,12 @@ def noise_correlations(
 
     Returns:
         Symmetric ``(n_neurons, n_neurons)`` Pearson correlation matrix
-        of z-scored residuals.
+        of z-scored residuals.  Off-diagonal entries are ``np.nan``
+        whenever either neuron has zero-variance residuals (e.g. an
+        identical response on every repeat of every orientation) —
+        Pearson's *r* is undefined in that case, matching the
+        package-wide convention that ``np.nan`` signals "undefined"
+        rather than "uncorrelated".
     """
     trial_rates = np.asarray(trial_rates, dtype=np.float64)
     trial_angles = np.asarray(trial_angles, dtype=np.float64)

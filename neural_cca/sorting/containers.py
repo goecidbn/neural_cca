@@ -68,9 +68,12 @@ class SortingData:
         n_trials: Total number of trials (may exceed
             ``len(unique(trials))`` if some trials had no spikes).
         stim_window: ``(onset, end)`` of the stimulus period within
-            each trial (seconds). Spikes that fall in
-            ``(onset, end]`` are part of the stimulated portion;
-            ``end`` is also the assumed full trial length.
+            each trial (seconds).  Must satisfy ``onset < end`` —
+            ``__post_init__`` raises ``ValueError`` on a zero or
+            inverted window so a typo doesn't silently divide by
+            zero in the downstream firing-rate calculation.  Spikes
+            that fall in ``(onset, end]`` are part of the stimulated
+            portion; ``end`` is also the assumed full trial length.
         stim_frequency: Temporal frequency of the visual stimulus
             (Hz).  Set to ``None`` when unknown / not applicable.
         metadata: Arbitrary extra information (electrode id, animal, …).

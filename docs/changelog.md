@@ -281,6 +281,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stable even if `poisson_train`'s refractory logic evolves) and
   points readers at `make_two_unit_demo` for the refractory-
   respecting demo path.
+- `neural_cca/sorting/metrics.py`: `est_snr`,
+  `d_prime_pairwise_matrix`, and `rpvs` docstrings tightened so
+  the Returns / Raises blocks match the recent epsilon and
+  refractory-validation changes.  Previously each said "is zero"
+  (`est_snr`, `d_prime_pairwise_matrix`) or "on invalid argument
+  combinations" (`rpvs`) without surfacing the new data-scale
+  thresholds or the explicit ``refractory_period > 0`` contract.
+- `neural_cca/sorting/containers.py`: `SortingData.stim_window`
+  attribute description now spells out the ``onset < end``
+  constraint enforced in `__post_init__`.
+- `neural_cca/tuning/population.py`: `noise_correlations` Returns
+  block now documents the ``np.nan``-for-zero-residual behaviour
+  (the implementation already did it; the docstring was silent).
 
 ### Internal
 

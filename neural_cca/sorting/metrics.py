@@ -133,8 +133,13 @@ def est_snr(waveforms: npt.NDArray) -> float:
 
     Returns:
         Estimated SNR (float).  ``np.nan`` when the noise standard
-        deviation is zero (degenerate input — single waveform or
-        identical traces).
+        deviation is *negligibly small* — specifically
+        ``noise_std <= 1e-12 * max(sig_amp, 1.0)``.  The data-scale-
+        relative threshold catches both genuine degeneracy (single
+        snippet, identical traces) and the mean-subtraction rounding
+        residual (~1e-15) that ``identical-rows`` input produces
+        after `np.std`, which used to slip past an exact ``== 0``
+        guard and yield a bogus ~1e15-scale SNR.
     """
     W_bar = np.mean(waveforms, axis=0, dtype=np.float64)
     sig_amp = float(np.max(W_bar) - np.min(W_bar))
@@ -255,7 +260,11 @@ def rpvs(
         RPV count (int) or violations-per-spike fraction (float).
 
     Raises:
-        ValueError: On invalid argument combinations.
+        ValueError: On invalid argument combinations, or when
+            ``refractory_period`` is not strictly positive (a
+            non-positive value silently inverts the
+            ``isi < refractory`` comparison and reports zero
+            violations for every spike train).
     """
     _validate_cluster_args(all_clusters, cluster_id)
     if not all_clusters and cluster_labels is None:
@@ -588,7 +597,10 @@ def d_prime_pairwise_matrix(
         ``(n_clusters, n_clusters)`` array with the diagonal set to
         ``nan``, and *cluster_ids* is the sorted unique label array.
         Off-diagonal entries are ``nan`` whenever a cluster has fewer
-        than two samples or the pooled standard deviation is zero.
+        than two samples or the pooled standard deviation falls below
+        the float-rounding floor (``< 1e-12``).  The epsilon guard
+        replaces an exact ``== 0`` check so ``np.sqrt(tiny + tiny)``
+        rounding doesn't slip through and divide by a near-zero value.
     """
     cluster_labels = np.asarray(cluster_labels)
     unique = np.sort(np.unique(cluster_labels))

@@ -9,40 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `sorting/sorting.py`: ``run_sorting_pipeline(n_clusters=1)`` is now
+- `sorting/sorting.py`: `run_sorting_pipeline(n_clusters=1)` is now
   a first-class supported path for pre-isolated single-unit channels
   (Kilosort export, manual curation, "trust the channel" recordings).
-  ``evaluate_sorting`` accepts k=1, fills ``silhouette_mean``,
-  ``neg_silhouette_rel`` and the per-cluster ``isolation_distance``
-  / ``l_ratio`` / ``d_prime`` entries with ``np.nan``, and emits a
-  single ``RuntimeWarning`` listing exactly which keys are NaN by
-  construction.  Amplitude, RPV, and OS metrics remain well-defined.
-- `sorting/sorting.py`: ``run_sorting_pipeline(... min_silhouette=...)``
-  — soft auto-select fallback to k=1.  When the best silhouette in
-  ``k_range`` is below the threshold the pipeline declines to split
-  the data rather than reporting arbitrary halves.  ``k_search``
-  is still populated so the user can audit the search; the boolean
-  ``min_silhouette_triggered`` flag is recorded in ``metadata``.
-- `tests/test_sorting_preprocess.py`: new ``TestSingleCluster``
-  class covering ``n_clusters=1`` end-to-end (quality, OS metrics,
-  zarr round-trip via both layouts), the ``find_optimal_k`` /
-  pipeline ``k_range`` guard, and the ``min_silhouette`` fallback
-  with both positive (triggers) and negative (doesn't trigger)
-  cases.
-- `neural_cca/synthetic.py`: new public module that owns all
-  synthetic spike-train and waveform generation used by the four
-  example notebooks and the test fixtures. Public helpers:
-  `poisson_train` (binwise inhomogeneous Poisson with absolute
-  refractory), `make_tuned_spikes` (single Gaussian-tuned cluster —
-  the function `tests/conftest.py` used to inline), and
-  `make_two_unit_demo` returning a `TwoUnitDemo` NamedTuple that
-  bundles every array the canonical two-unit demo needs (spike
-  times, trials, angles, waveforms, ground truth, and a loaded
-  `SortingData`). All four example notebooks collapse from ~115
-  lines of inline Poisson + Gaussian-template setup down to ~25
-  lines of unpacking. `tests/conftest.py::make_tuned_spikes` now
-  re-exports from this module so the test stream stays
-  bit-identical (same `PCG64DXSM` + `SeedSequence(42)` construction).
+  `evaluate_sorting` accepts k=1, fills `silhouette_mean`,
+  `neg_silhouette_rel` and the per-cluster `isolation_distance` /
+  `l_ratio` / `d_prime` entries with `np.nan`, and emits a single
+  `RuntimeWarning` listing exactly which keys are NaN by
+  construction. Amplitude, RPV, and OS metrics remain well-defined.
+- `sorting/sorting.py`: `run_sorting_pipeline(... min_silhouette=...)`
+  — soft auto-select fallback to k=1. When the best silhouette in
+  `k_range` is below the threshold the pipeline declines to split
+  the data rather than reporting arbitrary halves. `k_search` is
+  still populated so the user can audit the search; the boolean
+  `min_silhouette_triggered` flag is recorded in `metadata`.
+- `neural_cca/synthetic.py`: new public module owning all synthetic
+  spike-train and waveform generation used by the four example
+  notebooks and the test fixtures. Public helpers: `poisson_train`
+  (binwise inhomogeneous Poisson with absolute refractory),
+  `make_tuned_spikes` (single Gaussian-tuned cluster — the function
+  `tests/conftest.py` used to inline), and `make_two_unit_demo`
+  returning a `TwoUnitDemo` NamedTuple that bundles every array the
+  canonical two-unit demo needs (spike times, trials, angles,
+  waveforms, ground truth, and a loaded `SortingData`). All four
+  example notebooks collapse from ~115 lines of inline Poisson +
+  Gaussian-template setup down to ~25 lines of unpacking.
+  `tests/conftest.py::make_tuned_spikes` now re-exports from this
+  module so the test stream stays bit-identical (same `PCG64DXSM` +
+  `SeedSequence(42)` construction).
 - `docs/api/synthetic.rst`: dedicated API page for the new module.
 - `sta/analysis.py`: `autocorrelogram` accepts `normalize="counts"`
   (default, unchanged) or `normalize="rate"` (divides by
@@ -52,57 +46,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by zero.
 - `sta/plotting.py`: `plot_autocorrelogram` forwards `normalize=`
   and labels the y-axis accordingly. Emits a `RuntimeWarning` when
-  `refractory_period` is not a whole multiple of `bin_size` —
-  in that regime the dashed refractory line lands inside a bar
-  rather than on a bin edge and the plot can no longer be read as
+  `refractory_period` is not a whole multiple of `bin_size` — in
+  that regime the dashed refractory line lands inside a bar rather
+  than on a bin edge and the plot can no longer be read as
   "everything left of the line is a violation".
+- `sorting/__init__.py`, `neural_cca/__init__.py`,
+  `docs/api/sorting.rst`: `batch_sort_experiment` is now re-exported
+  from the package and documented under the sorting API.
+- `tests/test_sorting_preprocess.py`: new `TestSingleCluster` class
+  covering `n_clusters=1` end-to-end (quality, OS metrics, zarr
+  round-trip via both layouts), the `find_optimal_k` / pipeline
+  `k_range` guard, and the `min_silhouette` fallback with both
+  positive (triggers) and negative (doesn't trigger) cases. Also
+  added `TestPipelinePreprocess::test_pipeline_silhouette_matches_k_search`,
+  `test_pipeline_forwards_rng_to_os_bootstrap`, and
+  `test_feature_space_metrics_depend_on_preprocess` to pin the
+  pipeline-level silhouette / rng / feature-space invariants.
 - `tests/test_spike_train.py`: regression tests
   `test_rate_normalisation`, `test_invalid_normalize_raises`,
   `test_empty_spike_train_rate_is_nan`,
   `test_plot_warns_on_misaligned_refractory`,
-  `test_plot_no_warning_when_aligned`.
+  `test_plot_no_warning_when_aligned`, and
+  `TestAutocorrelogram::test_vectorised_matches_naive` (pins the
+  vectorised ACG against the naïve reference).
+- `tests/test_tuning_fitting.py`:
+  `TestTuningCurveInterpolation::test_orientation_wraparound_near_180`
+  and `test_direction_wraparound_near_360` pin the
+  `tuning_curve_interpolation` wrap-around fix.
+- `tests/test_tuning_statistics.py`: `TestEvaluateOsPerClusterRng`,
+  `TestTrialIndexValidation`, and `TestDosiIntShorthand` pin the
+  rng-share, trial-ID validation, and `dosi` int-shorthand
+  contracts.
 
 ### Changed
 
-- `sorting/sorting.py`: ``find_optimal_k`` (and the pipeline-internal
-  ``_find_optimal_k_from_features``) now raise ``ValueError`` when
-  any ``k < 2`` appears in ``k_range``.  Before, the call crashed
-  deep inside sklearn's ``silhouette_score``; the new message points
-  at ``run_sorting_pipeline(n_clusters=1)`` and the ``min_silhouette``
+- `sorting/sorting.py`: `find_optimal_k` (and the pipeline-internal
+  `_find_optimal_k_from_features`) now raise `ValueError` when any
+  `k < 2` appears in `k_range`. Before, the call crashed deep
+  inside sklearn's `silhouette_score`; the new message points at
+  `run_sorting_pipeline(n_clusters=1)` and the `min_silhouette`
   fallback as the intended single-cluster paths.
+- `sorting/sorting.py`: removed the unused `RngLike = "np.random..."`
+  string from `__all__`. It was advertised as a type alias but was
+  a bare runtime string — importing it gave a confusing literal
+  back.
+- `tuning/selectivity.py`, `tuning/modulation.py`: the orthogonal
+  ±90° lookup in `gosi` and `cross_orientation_suppression`
+  collapsed to a single `wrap180(pref + 90)` lookup. `+90` and `−90`
+  fold to the same angle mod 180°, so the previous two-element
+  average was algebraically identical to a single lookup.
+- `sorting/metrics.py`: `peak_amplitude_snr`, `waveform_stability`,
+  `amplitude_drift`, `fraction_missing` now use the shared
+  `_validate_cluster_args` helper instead of an ad-hoc partial
+  check. Passing `all_clusters=True` together with a `cluster_id`
+  now raises (it was silently ignoring `cluster_id` before).
+- `pyproject.toml`: ruff `target-version` lowered from `py312` to
+  `py310` to match `requires-python`. The previous setting let ruff
+  suggest syntax 3.10 users couldn't adopt.
 - `tests/test_tuning_statistics.py`: alphabetised the in-function
-  imports in `TestEvaluateOsPerClusterRng::test_integer_seed_advances_across_clusters`
+  imports in
+  `TestEvaluateOsPerClusterRng::test_integer_seed_advances_across_clusters`
   to satisfy `ruff check` (I001).
 
 ### Fixed
 
 - `sorting/sorting.py`: `run_sorting_pipeline` now forwards `rng` to
-  `evaluate_os_per_cluster`, and `evaluate_os_per_cluster` materialises
-  the RNG **once** via `make_rng` and shares it across clusters. Before,
-  an integer seed produced identical bootstrap streams in every
-  cluster (each `get_os_metrics` call rebuilt a fresh `Generator` from
-  the same seed); the pipeline didn't pass `rng` down at all, so any
-  downstream CI computed there was silently unseeded.
+  `evaluate_os_per_cluster`, and `evaluate_os_per_cluster`
+  materialises the RNG **once** via `make_rng` and shares it across
+  clusters. Before, an integer seed produced identical bootstrap
+  streams in every cluster (each `get_os_metrics` call rebuilt a
+  fresh `Generator` from the same seed); the pipeline didn't pass
+  `rng` down at all, so any downstream CI computed there was
+  silently unseeded.
 - `sorting/sorting.py`: `evaluate_sorting` accepts an optional
-  `features` matrix. `run_sorting_pipeline` now preprocesses once and
-  passes the resulting feature matrix to both clustering and quality
-  evaluation, so `quality["silhouette_mean"]` agrees bit-for-bit with
-  the value `k_search` recorded for the chosen `k`. Feature-space
-  isolation metrics (`isolation_distance`, `l_ratio`, `d_prime`) move
-  to that same space, matching the spike-sorting literature.
-  Amplitude-based metrics (`snr_*`, `peak_amplitude_snr`,
-  `waveform_stability`, `amplitude_drift`, `fraction_missing`) stay on
-  raw waveforms — voltage amplitude is only meaningful there.
+  `features` matrix. `run_sorting_pipeline` now preprocesses once
+  and passes the resulting feature matrix to both clustering and
+  quality evaluation, so `quality["silhouette_mean"]` agrees
+  bit-for-bit with the value `k_search` recorded for the chosen
+  `k`. Feature-space isolation metrics (`isolation_distance`,
+  `l_ratio`, `d_prime`) move to that same space, matching the
+  spike-sorting literature. Amplitude-based metrics (`snr_*`,
+  `peak_amplitude_snr`, `waveform_stability`, `amplitude_drift`,
+  `fraction_missing`) stay on raw waveforms — voltage amplitude is
+  only meaningful there.
 - `tuning/fitting.py`: `tuning_curve_interpolation` now samples the
-  fitted model across one full period (180° for orientation, 360° for
-  direction / double Gaussian) instead of `[angles.min(),
-  angles.max()]`. The old behaviour returned the wrong preferred angle
-  whenever the true peak fell across the wraparound (e.g. a direction
-  cell preferring 350° on data sampled at `[0, 30, …, 330]`).
-- `sta/analysis.py`: `autocorrelogram` vectorised the inner pair loop
-  with `np.searchsorted` + two batched histogram calls. The previous
-  implementation issued one `np.histogram` per pair (~O(n²) histogram
-  calls). Pinned bin-for-bin equivalent to the naïve reference via
+  fitted model across one full period (180° for orientation, 360°
+  for direction / double Gaussian) instead of `[angles.min(),
+  angles.max()]`. The old behaviour returned the wrong preferred
+  angle whenever the true peak fell across the wraparound (e.g. a
+  direction cell preferring 350° on data sampled at `[0, 30, …,
+  330]`).
+- `sta/analysis.py`: `autocorrelogram` vectorised the inner pair
+  loop with `np.searchsorted` + two batched histogram calls. The
+  previous implementation issued one `np.histogram` per pair
+  (~O(n²) histogram calls). Pinned bin-for-bin equivalent to the
+  naïve reference via
   `TestAutocorrelogram::test_vectorised_matches_naive`.
 - `sorting/io_util.py`: zarr v3 renamed the per-array compressor
   argument from `compressor` to `compressors`. `_zarr_array` now
@@ -111,57 +149,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tuning/selectivity.py`: `dosi_circular_normalised` now defaults
   `angles=None` (≡ `len(activities)`) and rejects an integer
   `angles` that doesn't match `len(activities)` with a clear
-  `ValueError`. The previous magic default of `8` produced confusing
-  shape errors for any other activity length.
-- `tuning/_filter.py`: `_build_trial_filter` now validates that every
-  trial ID lies in `[0, len(angles))`. The package-wide convention is
-  that `angles[k]` is the stimulus angle of trial `k`, so
-  out-of-range or negative trial IDs used to silently mis-map angles
-  to rates.
-- `sta/analysis.py`: `calc_mfr_trial` uses `max(trials) + 1` instead
-  of `len(unique(trials))` when `n_trials is None`, so sparse trial
-  IDs (e.g. `[0, 2, 5]`) no longer drop trials silently.
-
-### Changed
-
-- `sorting/sorting.py`: removed the unused `RngLike = "np.random..."`
-  string from `__all__`. It was advertised as a type alias but was a
-  bare runtime string — importing it gave a confusing literal back.
-- `tuning/selectivity.py`, `tuning/modulation.py`: the orthogonal
-  ±90° lookup in `gosi` and `cross_orientation_suppression` collapsed
-  to a single `wrap180(pref + 90)` lookup. `+90` and `−90` fold to
-  the same angle mod 180°, so the previous two-element average was
-  algebraically identical to a single lookup.
-- `sorting/metrics.py`: `peak_amplitude_snr`, `waveform_stability`,
-  `amplitude_drift`, `fraction_missing` now use the shared
-  `_validate_cluster_args` helper instead of an ad-hoc partial check.
-  Passing `all_clusters=True` together with a `cluster_id` now
-  raises (it was silently ignoring `cluster_id` before).
-- `pyproject.toml`: ruff `target-version` lowered from `py312` to
-  `py310` to match `requires-python`. The previous setting let ruff
-  suggest syntax 3.10 users couldn't adopt.
-
-### Added
-
-- `sorting/__init__.py`, `neural_cca/__init__.py`,
-  `docs/api/sorting.rst`: `batch_sort_experiment` is now re-exported
-  from the package and documented under the sorting API.
-- `tests/test_tuning_fitting.py`:
-  `TestTuningCurveInterpolation::test_orientation_wraparound_near_180`
-  and `test_direction_wraparound_near_360` pin the
-  `tuning_curve_interpolation` wrap-around fix.
-- `tests/test_spike_train.py`:
-  `TestAutocorrelogram::test_vectorised_matches_naive` pins the
-  vectorised `autocorrelogram` against the naïve reference.
-- `tests/test_sorting_preprocess.py`:
-  `TestPipelinePreprocess::test_pipeline_silhouette_matches_k_search`,
-  `test_pipeline_forwards_rng_to_os_bootstrap`, and
-  `test_feature_space_metrics_depend_on_preprocess` pin the
-  pipeline-level silhouette / rng / feature-space invariants.
-- `tests/test_tuning_statistics.py`:
-  `TestEvaluateOsPerClusterRng`, `TestTrialIndexValidation`, and
-  `TestDosiIntShorthand` pin the rng-share, trial-ID validation, and
-  `dosi` int-shorthand contracts.
+  `ValueError`. The previous magic default of `8` produced
+  confusing shape errors for any other activity length.
+- `tuning/_filter.py`: `_build_trial_filter` now validates that
+  every trial ID lies in `[0, len(angles))`. The package-wide
+  convention is that `angles[k]` is the stimulus angle of trial
+  `k`, so out-of-range or negative trial IDs used to silently
+  mis-map angles to rates.
+- `sta/analysis.py`: `calc_mfr_trial` uses `max(trials) + 1`
+  instead of `len(unique(trials))` when `n_trials is None`, so
+  sparse trial IDs (e.g. `[0, 2, 5]`) no longer drop trials
+  silently.
 
 ### Documentation
 

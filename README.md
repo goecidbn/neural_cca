@@ -38,6 +38,14 @@ Comprehensive orientation/direction tuning analysis for visual neuroscience expe
 - **Composite function**: `get_os_metrics()` 
 — all-in-one metrics with optional fitting, p-values, gOSI/gDSI, and bootstrap CIs
 
+### `synthetic` — Synthetic data generators
+
+Single source of truth for the synthetic spike-train and waveform data used by the example notebooks and the test fixtures.
+
+- **`poisson_train`**: bin-wise inhomogeneous Poisson with an absolute refractory period
+- **`make_tuned_spikes`**: single Gaussian-tuned cluster — the helper backing `tests/conftest.py`
+- **`make_two_unit_demo`**: the canonical two-unit demo (orientation-indifferent + orientation-selective cluster, Gaussian-template waveforms, ready-to-use `SortingData`) used at the top of every example notebook
+
 ## Installation
 
 ```bash

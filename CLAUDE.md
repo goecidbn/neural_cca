@@ -70,22 +70,24 @@ neural_cca/
    `end <= onset` — a typo here used to silently NaN out firing
    rates downstream.
 
-## v0.2.0 changes a fresh agent **will not infer** from skimming
+## 0.1.2 + [Unreleased] changes a fresh agent **will not infer** from skimming
 
-These are the changes most likely to bite if assumed away.  Read
+These are the changes most likely to bite if assumed away.  The
+released line is at v0.1.2; the items below ship under
+`[Unreleased]` and will land as **v0.1.3** (target).  Read
 `docs/changelog.md` `[Unreleased]` for the full list.
 
 ### Semantic flip: `gosi` / `gdsi`
 
-Before v0.2.0, `gosi(responses, angles)` returned the **two-point**
-Niell & Stryker (2008) ratio
+Before the [Unreleased] line, `gosi(responses, angles)` returned the
+**two-point** Niell & Stryker (2008) ratio
 `(R_pref - R_orth) / (R_pref + R_orth)`.
 
 **Now `gosi` returns the vector-sum (1 − circular variance) form,**
 the modern Mazurek 2014 convention.  The two-point ratio is now
 `osi_two_point` / `dsi_two_point`.  This is a silent numeric
 change for any caller of `gosi(...)`.  When debugging a number
-mismatch against a v0.1.x reference, suspect this first.
+mismatch against a v0.1.0–v0.1.2 reference, suspect this first.
 
 ### Subpackage rename: `sta` → `spike_train`
 
@@ -105,7 +107,7 @@ dict carries a `"method"` key indicating which CI was actually
 used (BCa falls back to `"percentile"` on degenerate bootstrap
 distributions).  Tests that pin `ci_lower` / `ci_upper` to
 specific decimals will fail under the new default — use
-`method="percentile"` explicitly if you need v0.1.x numbers.
+`method="percentile"` explicitly if you need v0.1.0–v0.1.2 numbers.
 
 ### Default change: `tuning_bandwidth(method="von_mises")`
 

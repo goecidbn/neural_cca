@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-26
+
 ### Added
 
 - `sorting/metrics.py`: `contamination_rate_hill()` — the Hill et al.
@@ -99,6 +101,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   al. (2024) and the Allen Institute `ecephys_spike_sorting`
   pipeline.  Default remains `mode="global"` for backwards
   compatibility.  Reference: doi:10.1523/ENEURO.0554-23.2024.
+- `sorting/metrics.py`: `fraction_missing()` gains a `clamp_max`
+  parameter (default `0.5`) applied **uniformly across all three
+  methods** (`gaussian`, `lognormal`, `empirical`).  Previously
+  only the empirical path was clamped, and the docstring incorrectly
+  claimed the Gaussian / lognormal paths were also bounded.  Pass
+  `clamp_max=None` to disable clamping for diagnostic /
+  threshold-tuning workflows.  Values are unconditionally clamped
+  from below at `0.0`.
+- `sorting/batch.py`: `batch_sort_experiment()` accepts
+  `**pipeline_kwargs` forwarded verbatim to
+  `run_sorting_pipeline()` per electrode, so uncommon options
+  (`min_silhouette`, `preprocess`, `pca_components`, …) can be
+  set on the batch driver without inflating its signature.
+- `neural_cca/__init__.py`: `make_tuned_spikes` is now re-exported
+  at the package top level alongside `TwoUnitDemo`,
+  `make_two_unit_demo`, and `poisson_train`, so the synthetic
+  surface advertised in the README is reachable via the canonical
+  import path.
+
+### Fixed
+
+- `sorting/metrics.py`: `contamination_rate_hill()` now accepts an
+  optional `trials=` parameter; when given, refractory-violation
+  counting iterates **within each trial** so globally-sorted
+  trial-relative spike times can no longer create spurious
+  cross-trial pseudo-ISIs that over-estimated contamination.
+  `evaluate_sorting()` passes `trials=data.trials` automatically.
+  Continuous-recording behaviour (`trials=None`) is unchanged.
+  Aligns with the package-wide trial-aware ISI convention
+  documented in `CLAUDE.md` §1 and used by `_per_trial_isis` in
+  `spike_train/analysis.py`.
+- `tuning/temporal.py`: `temporal_frequency_tuning().preferred_tf`
+  now computes argmax over **positive TFs only**.  A blank trial
+  (TF=0) is a spontaneous-activity sample, not a "0 Hz grating";
+  the previous behaviour could report `preferred_tf=0` for
+  spontaneously-active cells, advertising a stimulus that was
+  never shown.  The blank-trial level is still surfaced separately
+  as `baseline_response`.
+- `tuning/statistics.py`: `_bca_ci()` returns `(NaN, NaN)` on every
+  degenerate path so the outer `bootstrap_ci()` /
+  `bootstrap_ci_strata()` correctly fall back to the percentile
+  CI **and** relabel `"method": "percentile"`.  Previously the
+  inner fallback called `_percentile_ci()` directly but left the
+  outer `"method"` label as `"bca"`, so the user-visible provenance
+  did not match the actual computation.
 
 ### Documented
 
@@ -121,8 +168,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   powerful internals (multi-channel templates, drift correction,
   STA-based receptive-field estimation) are planned for future
   releases and will be additive.
+- `README.md`: install snippet switched from `pip install neural-cca`
+  to `pip install git+https://github.com/goecidbn/neural_cca.git`
+  (package is not yet on PyPI).  A new roadmap item tracks the
+  PyPI publish; once that lands the snippet reverts to the bare
+  `pip install neural-cca` form.
+- `README.md`: API summary picks up `contamination_rate_hill`,
+  `first_spike_latency_thresholded`, `fraction_missing(method=...)`,
+  `isolation_distance` / `l_ratio` `mode="worst_pair"`, and the
+  BCa default on `bootstrap_ci`.
+- `tuning/statistics.py::_bca_ci`: one-line comment documenting
+  the DiCiccio & Efron (1996, *Stat. Sci.* 11:189 eq. 2.13) sign
+  convention for the acceleration term `diffs = jk_mean - jk_valid`
+  — both signs give the same `a` because the numerator is
+  sum-of-cubes and the denominator is sum-of-squares^(3/2), so
+  future reviewers don't second-guess the sign against textbook
+  write-ups that use the opposite convention.
+- `sorting/sorting.py::run_sorting_pipeline`: the free-form
+  "Single-cluster (``k = 1``) Mode" section header (which numpydoc
+  flagged as Unknown) is now nested under a recognised `Notes`
+  section.
+- `CLAUDE.md` + `docs/api/sta.rst`: replaced premature "v0.2.0"
+  language with the actual landing version (`v0.1.3`) and made
+  the headline section title precise: *0.1.2 + [Unreleased]
+  changes a fresh agent will not infer from skimming*.
+- `docs/changelog.md`: the `[0.1.2]` entries that referenced
+  `sta/analysis.py` / `sta/plotting.py` as file paths now point at
+  `spike_train/...`, with a one-line note at the top of the section
+  explaining the rename happened in `[Unreleased]`.
+
+### Tests
+
+- `tests/test_sorting_metrics.py::TestContaminationRateHill`:
+  closed-form regression (zero violations, known `N_v`),
+  cross-trial false-positive suppression (the new `trials=` path),
+  per-cluster dict shape, and required-argument validation.
+- `tests/test_sorting_metrics.py::TestFractionMissingMethods`:
+  cover the `lognormal` and `empirical` paths, the new
+  `clamp_max` parameter (including `None`-disables-upper-bound),
+  and the input-validation guards.
+- `tests/test_sorting_metrics.py::TestWorstPairMode`: pin the
+  algorithmic invariants `iso_global ≤ iso_worst_pair` (mixing
+  reaches the *n*-th distance earlier) and
+  `lr_global ≥ lr_worst_pair` (sum ≥ max), plus
+  worst_pair-identifies-overlapping-neighbour behaviour.
+- `tests/test_spike_train.py::TestFirstSpikeLatencyThresholded`:
+  recover a known 50 ms response latency from a synthetic burst,
+  verify a silent baseline-only cell reports
+  `frac_responsive < 0.15`, and exercise input validation.
+- `tests/test_tuning_statistics.py::TestBootstrapCI`:
+  `test_default_method_is_bca`,
+  `test_bca_differs_from_percentile_on_skewed_data` (on a
+  right-skewed exponential), and
+  `test_bca_falls_back_to_percentile_on_degenerate` covering the
+  `_bca_ci` NaN-sentinel relabelling fix above.
 
 ## [0.1.2] - 2026-05-25
+
+> **Note**: file paths under ``sta/`` in the entries below were renamed
+> to ``spike_train/`` in *[Unreleased]*; the historical paths have been
+> updated to the current paths so links in this changelog stay valid.
+> The deprecation shim at ``neural_cca/sta/`` re-exports the same
+> public surface and emits a ``DeprecationWarning`` on import.
 
 ### Added
 
@@ -155,13 +262,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   module so the test stream stays bit-identical (same `PCG64DXSM` +
   `SeedSequence(42)` construction).
 - `docs/api/synthetic.rst`: dedicated API page for the new module.
-- `sta/analysis.py`: `autocorrelogram` accepts `normalize="counts"`
+- `spike_train/analysis.py`: `autocorrelogram` accepts `normalize="counts"`
   (default, unchanged) or `normalize="rate"` (divides by
   `n_spikes * bin_size`, returning Hz — matches the
   elephant / SpikeInterface convention). Empty spike trains return
   NaN-filled arrays under `rate` normalisation instead of dividing
   by zero.
-- `sta/plotting.py`: `plot_autocorrelogram` forwards `normalize=`
+- `spike_train/plotting.py`: `plot_autocorrelogram` forwards `normalize=`
   and labels the y-axis accordingly. Emits a `RuntimeWarning` when
   `refractory_period` is not a whole multiple of `bin_size` — in
   that regime the dashed refractory line lands inside a bar rather
@@ -293,7 +400,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   angle whenever the true peak fell across the wraparound (e.g. a
   direction cell preferring 350° on data sampled at `[0, 30, …,
   330]`).
-- `sta/analysis.py`: `autocorrelogram` vectorised the inner pair
+- `spike_train/analysis.py`: `autocorrelogram` vectorised the inner pair
   loop with `np.searchsorted` + two batched histogram calls. The
   previous implementation issued one `np.histogram` per pair
   (~O(n²) histogram calls). Pinned bin-for-bin equivalent to the
@@ -313,7 +420,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   convention is that `angles[k]` is the stimulus angle of trial
   `k`, so out-of-range or negative trial IDs used to silently
   mis-map angles to rates.
-- `sta/analysis.py`: `calc_mfr_trial` uses `max(trials) + 1`
+- `spike_train/analysis.py`: `calc_mfr_trial` uses `max(trials) + 1`
   instead of `len(unique(trials))` when `n_trials is None`, so
   sparse trial IDs (e.g. `[0, 2, 5]`) no longer drop trials
   silently.
@@ -356,7 +463,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names (`labels=`, `cluster=`, `result.labels`). Now uses
   `cluster_labels=`, `cluster_id=`, and `result.cluster_labels`,
   matching the real `get_os_metrics` signature.
-- `sta/plotting.py`: replaced the misleading "avoid circular import"
+- `spike_train/plotting.py`: replaced the misleading "avoid circular import"
   comment on the in-function `_per_trial_isis` import with the actual
   reason (underscore-private helper, deliberately not promoted to the
   module-top barrel).
@@ -436,7 +543,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `examples/example_sorting_pipeline.ipynb`: removed orphaned bernoulli-train
   code after `poisson_train`'s return — left over from a copy-paste, was a
   hard `SyntaxError` when the cell was parsed.
-- `sta/analysis.py`: `trial_to_trial_reliability` docstring used `|R|`,
+- `spike_train/analysis.py`: `trial_to_trial_reliability` docstring used `|R|`,
   which docutils interpreted as a substitution reference and Sphinx
   promoted to an error. Now `:math:`|R|``.
 - `sorting/metrics.py`: `fraction_missing` docstring referenced a

@@ -3,7 +3,7 @@
 sta — Deprecated alias for ``spike_train``
 ==========================================
 
-.. deprecated:: 0.2.0
+.. deprecated:: 0.1.3
 
    The ``sta`` subpackage was renamed to
    :doc:`spike_train <spike_train>`.  The old import path

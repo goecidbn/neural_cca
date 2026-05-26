@@ -322,6 +322,7 @@ def rpvs(
 def contamination_rate_hill(
     spike_times: npt.NDArray,
     cluster_labels: npt.NDArray | None = None,
+    trials: npt.NDArray | None = None,
     recording_duration: float | None = None,
     refractory_period: float = 0.001,
     censored_period: float = 0.0,
@@ -390,6 +391,17 @@ def contamination_rate_hill(
         cluster_labels: Optional cluster labels.  When given, the
             function returns one value per cluster (or one value for
             ``cluster_id`` when ``all_clusters=False``).
+        trials: Optional ``(n_spikes,)`` trial index per spike.  When
+            given, refractory-violation counting iterates **within
+            each trial** so that trial-relative spike times (the
+            package-wide convention — see ``CLAUDE.md`` §1) are not
+            globally sorted into spurious cross-trial pairs.  Pass
+            ``None`` only for continuous (non-trial) recordings where
+            ``spike_times`` is in absolute monotonic time; otherwise
+            omitting ``trials`` over-estimates contamination because
+            a trial-2 spike at *t=0.05 s* sorts between trial-1
+            spikes and creates a sub-millisecond pseudo-ISI that
+            survives the ``diffs > 0`` filter.
         recording_duration: Total recording duration in seconds.
             Required; an estimate from ``spike_times.max() -
             spike_times.min()`` is *not* used because it
@@ -458,15 +470,36 @@ def contamination_rate_hill(
     # special-cased return-shape dispatcher up here.
     duration_valid = T > 0.0
 
-    def _hill_one(spk: np.ndarray) -> float:
+    def _count_violations(spk: np.ndarray, trl: np.ndarray | None) -> int:
+        """Count refractory-period violations.
+
+        When ``trl`` is given, iterate within each trial after sorting
+        that trial's spikes — cross-trial pairs are structurally
+        excluded.  When ``trl`` is ``None`` the input is treated as one
+        continuous monotonic stream (legacy / non-trial recordings) and
+        the ``diffs > 0`` filter handles any unsortedness defensively.
+        """
+        if trl is None:
+            d = np.diff(np.sort(spk))
+            d = d[d > 0]
+            return int(np.sum(d < t_r))
+        n_v = 0
+        for t in np.unique(trl):
+            spk_t = np.sort(spk[trl == t])
+            if len(spk_t) < 2:
+                continue
+            d = np.diff(spk_t)
+            d = d[d > 0]
+            n_v += int(np.sum(d < t_r))
+        return n_v
+
+    def _hill_one(spk: np.ndarray, trl: np.ndarray | None = None) -> float:
         if not duration_valid:
             return float("nan")
         N = int(spk.size)
         if N < 2:
             return float("nan")
-        diffs = np.diff(np.sort(spk))
-        diffs = diffs[diffs > 0]
-        N_v = int(np.sum(diffs < t_r))
+        N_v = _count_violations(spk, trl)
         # Closed-form Hill estimator.  ``disc`` (the radicand) can go
         # negative for catastrophically contaminated units; clip to 0
         # so the estimator saturates at C = 0.5 instead of returning
@@ -475,16 +508,26 @@ def contamination_rate_hill(
         disc = max(0.0, float(disc))
         return 0.5 * (1.0 - np.sqrt(disc))
 
+    spike_times = np.asarray(spike_times, dtype=np.float64)
+    trials_arr = np.asarray(trials) if trials is not None else None
+
     if cluster_labels is None:
-        return _hill_one(np.asarray(spike_times, dtype=np.float64))
+        return _hill_one(spike_times, trials_arr)
 
     cluster_labels = np.asarray(cluster_labels)
-    spike_times = np.asarray(spike_times, dtype=np.float64)
     if all_clusters:
         return {
-            int(c): _hill_one(spike_times[cluster_labels == c]) for c in np.unique(cluster_labels)
+            int(c): _hill_one(
+                spike_times[cluster_labels == c],
+                trials_arr[cluster_labels == c] if trials_arr is not None else None,
+            )
+            for c in np.unique(cluster_labels)
         }
-    return _hill_one(spike_times[cluster_labels == cluster_id])
+    mask = cluster_labels == cluster_id
+    return _hill_one(
+        spike_times[mask],
+        trials_arr[mask] if trials_arr is not None else None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1166,6 +1209,7 @@ def fraction_missing(
     cluster_id: int | None = None,
     normality_warn: bool = True,
     method: str = "gaussian",
+    clamp_max: float | None = 0.5,
 ) -> float | dict[int, float]:
     r"""Estimate fraction of undetected spikes from amplitude distribution.
 
@@ -1222,6 +1266,21 @@ def fraction_missing(
             Only consulted for ``method="gaussian"``.
         method: ``"gaussian"`` (default, legacy / Hill 2011),
             ``"lognormal"``, or ``"empirical"``.
+        clamp_max: Upper bound to clamp the returned fraction at,
+            applied **uniformly across all three methods**.  The
+            default of ``0.5`` reflects the standard interpretation —
+            a missing-fraction above 0.5 means the cluster's
+            amplitude distribution is more than half-cut by the
+            detection threshold, at which point the estimator's
+            single-distribution assumption has already broken down
+            and reporting a precise number is misleading.  Set
+            ``None`` to disable clamping and return the raw tail
+            probability (useful for diagnostic / threshold-tuning
+            workflows that need to see how far above 0.5 a cluster
+            sits).  Values are also clamped from below at ``0.0``
+            unconditionally — a negative tail probability is a
+            numerical artefact of kernel smoothing and never has a
+            physical interpretation.
 
     Returns:
         Fraction missing (float, 0–1) or ``{cluster_id: float}`` dict.
@@ -1253,7 +1312,20 @@ def fraction_missing(
         raise ValueError(
             f"method must be one of 'gaussian', 'lognormal', 'empirical'; got {method!r}."
         )
+    if clamp_max is not None and clamp_max <= 0.0:
+        raise ValueError(
+            f"clamp_max must be > 0 or None; got {clamp_max}.  Use None to disable clamping."
+        )
     _validate_cluster_args(all_clusters, cluster_id)
+
+    def _clamp(x: float) -> float:
+        """Apply the uniform ``[0, clamp_max]`` clamp (or just ``>=0`` if disabled)."""
+        if np.isnan(x):
+            return x
+        x = max(0.0, x)
+        if clamp_max is not None:
+            x = min(clamp_max, x)
+        return x
 
     def _frac_one(w: npt.NDArray, label: object | None = None) -> float:
         # Sample-size floor: 10 spikes for parametric fits (the legacy
@@ -1281,7 +1353,7 @@ def fraction_missing(
                         stacklevel=3,
                     )
             threshold = amps.min()
-            return float(sp_stats.norm.cdf(threshold, loc=mu, scale=sigma))
+            return _clamp(float(sp_stats.norm.cdf(threshold, loc=mu, scale=sigma)))
 
         if method == "lognormal":
             # Strictly positive amplitudes are required for the log
@@ -1297,7 +1369,7 @@ def fraction_missing(
             if sigma_log == 0:
                 return np.nan
             threshold_log = float(np.log(amps.min()))
-            return float(sp_stats.norm.cdf(threshold_log, loc=mu_log, scale=sigma_log))
+            return _clamp(float(sp_stats.norm.cdf(threshold_log, loc=mu_log, scale=sigma_log)))
 
         # method == "empirical"
         # Estimate the underlying density with a Gaussian kernel (KDE)
@@ -1316,11 +1388,8 @@ def fraction_missing(
         # = (1/n) Σ Φ((x_min − amp_i) / h).
         x_min = float(amps_sorted[0])
         tail = float(np.mean(sp_stats.norm.cdf((x_min - amps_sorted) / h)))
-        # Clamp to [0, 0.5] — the empirical method can in principle
-        # produce a tiny number > 0.5 from kernel smoothing of a
-        # near-symmetric distribution; saturate consistently with
-        # the Gaussian / lognormal paths.
-        return max(0.0, min(0.5, tail))
+        # Uniform ``[0, clamp_max]`` saturation — see ``clamp_max`` arg.
+        return _clamp(tail)
 
     if cluster_labels is None:
         return _frac_one(waveforms)

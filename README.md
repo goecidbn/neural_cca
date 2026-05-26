@@ -28,7 +28,7 @@ analyses.
 KMeans-based spike clustering pipeline with automatic k-selection via silhouette analysis.
 
 - **Sorting pipeline**: waveform loading, KM-based clustering, automatic cluster count selection, per-cluster orientation selectivity evaluation
-- **Quality metrics**: silhouette score, SNR (per-cluster and weighted), refractory period violations (RPVs), isolation distance, L-ratio, d-prime, peak amplitude SNR, waveform stability, amplitude drift, fraction missing
+- **Quality metrics**: silhouette score, SNR (per-cluster and weighted), refractory period violations (`rpvs`) and the calibrated Hill 2011 contamination fraction (`contamination_rate_hill`), isolation distance and L-ratio (with optional `worst_pair` mode for the noisiest neighbour), d-prime, peak amplitude SNR, waveform stability, amplitude drift, `fraction_missing` (with `method="gaussian"` (default / Hill 2011), `"lognormal"`, or non-parametric `"empirical"`)
 - **Batch processing**: xarray/zarr-backed multi-recording pipelines with trial-angle mapping
 
 ### `spike_train` — Spike Train Statistics (previously `sta`)
@@ -37,7 +37,7 @@ Single-unit and multi-unit spike train statistics covering firing rate, variabil
 
 - **Firing rate**: mean firing rate (MFR), per-trial MFR, PSTH (peri-stimulus time histogram)
 - **Variability**: coefficient of variation (CV), local variation (LvR), CV of log-ISI, Fano factor
-- **Temporal structure**: autocorrelogram, ISI violation rate, first spike latency
+- **Temporal structure**: autocorrelogram, ISI violation rate, first spike latency (raw and `first_spike_latency_thresholded` — pulled from the per-trial PSTH once the rate crosses a baseline+kσ threshold)
 - **Trial reliability**: trial-to-trial reliability (Pearson, Fano, F1 phase consistency), firing rate stability across recording segments
 
 ### `tuning` — Orientation & Direction Selectivity
@@ -64,12 +64,20 @@ Single source of truth for the synthetic spike-train and waveform data used by t
 
 ## Installation
 
+`neural-cca` is not yet on PyPI; install directly from git:
+
 ```bash
-pip install neural-cca
+pip install git+https://github.com/goecidbn/neural_cca.git
 
 # With batch processing support (xarray + zarr):
-pip install neural-cca[batch]
+pip install "neural-cca[batch] @ git+https://github.com/goecidbn/neural_cca.git"
 ```
+
+<!-- TODO: switch to `pip install neural-cca` / `pip install neural-cca[batch]`
+once the package is published on PyPI; until then the git URL is the only source. -->
+
+A roadmap item tracks the PyPI publish; once that lands the install snippet
+becomes the bare `pip install neural-cca` form.
 
 ## Quick Start
 
@@ -109,6 +117,7 @@ Full API reference at [GitHub Pages](https://goecidbn.github.io/neural_cca/).
   - [ ] add inter trial variability
   - [ ] add example where spikes are not starting with stimulus onset
 - [ ] potentially combine examples with the spike-train statistics module
+- [ ] publish to PyPI (so the install snippet can drop the `git+https://` URL)
 
 
 ## License

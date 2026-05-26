@@ -39,6 +39,7 @@ def batch_sort_experiment(
     compute_sta: bool = True,
     compute_tuning: bool = True,
     rng: np.random.Generator | int | None = None,
+    **pipeline_kwargs,
 ) -> dict:
     """Batch spike sorting and analysis across all electrodes.
 
@@ -83,6 +84,12 @@ def batch_sort_experiment(
         compute_tuning: Whether to compute orientation selectivity per
             cluster.
         rng: Generator, int seed, or ``None`` for KMeans reproducibility.
+        **pipeline_kwargs: Extra keyword arguments forwarded verbatim to
+            :func:`run_sorting_pipeline` per electrode.  Use this to set
+            uncommon options (``min_silhouette``, ``preprocess``,
+            ``pca_components``, ``invert_waveforms``, ``bin_size``, ``n_init``)
+            without inflating the batch signature.  An unrecognised key
+            surfaces as a normal ``TypeError`` from the per-electrode call.
 
     Returns:
         Dict with keys:
@@ -189,6 +196,7 @@ def batch_sort_experiment(
                 refractory_period=refractory_period,
                 compute_os=compute_tuning,
                 plot=False,
+                **pipeline_kwargs,
             )
 
             # --- STA per cluster ---

@@ -107,6 +107,7 @@ from .spike_train import (
 )
 from .synthetic import (
     TwoUnitDemo,
+    make_tuned_spikes,
     make_two_unit_demo,
     poisson_train,
 )

@@ -160,6 +160,47 @@ class TestBootstrapCI:
         for key in ["estimate", "ci_lower", "ci_upper", "se"]:
             assert key in result
 
+    def test_default_method_is_bca(self):
+        """``bootstrap_ci`` defaults to BCa as of v0.1.3."""
+        data = np.arange(50, dtype=float)
+        result = bootstrap_ci(data, np.mean, n_bootstrap=500, rng=42)
+        assert "method" in result
+        assert result["method"] == "bca"
+
+    def test_bca_differs_from_percentile_on_skewed_data(self):
+        """BCa applies a bias + acceleration correction; on a skewed
+        sample its endpoints should differ from the plain percentile
+        method.  We use a heavily right-skewed exponential.
+        """
+        rng = np.random.default_rng(7)
+        data = rng.exponential(scale=2.0, size=300)
+        bca = bootstrap_ci(data, np.mean, n_bootstrap=1000, rng=42, method="bca")
+        pct = bootstrap_ci(data, np.mean, n_bootstrap=1000, rng=42, method="percentile")
+        assert bca["method"] == "bca"
+        assert pct["method"] == "percentile"
+        # Both must bracket the true mean (= 2.0) at this sample size.
+        assert bca["ci_lower"] < 2.0 < bca["ci_upper"]
+        assert pct["ci_lower"] < 2.0 < pct["ci_upper"]
+        # BCa endpoints should differ from percentile on a skewed sample.
+        # A tiny tolerance handles the rare exact-match case.
+        assert (
+            abs(bca["ci_lower"] - pct["ci_lower"]) > 1e-6
+            or abs(bca["ci_upper"] - pct["ci_upper"]) > 1e-6
+        )
+
+    def test_bca_falls_back_to_percentile_on_degenerate(self):
+        """When the bootstrap distribution is degenerate (constant
+        stat ⇒ z0 = ±inf), the BCa path should fall back to plain
+        percentile rather than raise or return inf endpoints.
+        """
+        # Constant data → every bootstrap statistic is the same value,
+        # so the BCa bias correction is degenerate.
+        data = np.full(20, 3.0)
+        result = bootstrap_ci(data, np.mean, n_bootstrap=200, rng=42, method="bca")
+        assert result["method"] == "percentile"
+        assert result["ci_lower"] == pytest.approx(3.0)
+        assert result["ci_upper"] == pytest.approx(3.0)
+
 
 # ======================================================================
 # Tests: bootstrap_ci_strata

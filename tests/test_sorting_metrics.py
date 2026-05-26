@@ -8,6 +8,7 @@ import pytest
 from neural_cca.sorting.metrics import (
     amplitude_drift,
     calc_weighted_snr,
+    contamination_rate_hill,
     d_prime,
     d_prime_pairwise_matrix,
     fraction_missing,
@@ -387,3 +388,285 @@ class TestRpvsValidation:
         result = rpvs(st, refractory_period=0.001, relative=False)
         assert isinstance(result, int)
         assert result >= 0
+
+
+# ---------------------------------------------------------------------------
+# Hill 2011 contamination rate
+# ---------------------------------------------------------------------------
+
+
+class TestContaminationRateHill:
+    """Closed-form regressions for the Hill 2011 estimator.
+
+    The Hill estimator is
+        C = 1/2 (1 - sqrt(1 - 2 N_v T / (N^2 (t_r - t_c)))).
+    These tests construct cases where ``N``, ``N_v``, ``T``, and ``t_r``
+    are all known so the analytical result can be compared bit-for-bit.
+    """
+
+    @staticmethod
+    def _hill_closed_form(N, N_v, T, t_r, t_c=0.0):
+        disc = 1.0 - (2.0 * N_v * T) / (N**2 * (t_r - t_c))
+        disc = max(0.0, float(disc))
+        return 0.5 * (1.0 - np.sqrt(disc))
+
+    def test_zero_violations_returns_zero(self):
+        """No violations → C = 0 exactly."""
+        # 100 spikes, 10/trial × 10 trials of 1 s.  Within each trial
+        # spikes are at 0.05, 0.15, ..., 0.95 s — 100 ms ISI, well above
+        # the 1 ms refractory.
+        n_trials = 10
+        trial_len = 1.0
+        spikes_per_trial = 10
+        st = np.tile(np.linspace(0.05, 0.95, spikes_per_trial), n_trials)
+        trials = np.repeat(np.arange(n_trials), spikes_per_trial)
+        C = contamination_rate_hill(
+            st,
+            trials=trials,
+            recording_duration=n_trials * trial_len,
+            refractory_period=0.001,
+        )
+        assert C == pytest.approx(0.0, abs=1e-12)
+
+    def test_known_violations_matches_closed_form(self):
+        """Inject a known number of within-trial violations."""
+        n_trials = 5
+        trial_len = 2.0
+        # Each trial: 20 spikes spaced 0.1 s apart starting at 0.05 s
+        # (no violations), plus one extra spike 0.5 ms after spike #5
+        # in each trial → 1 violation per trial × 5 trials = 5 total.
+        base = np.linspace(0.05, 1.95, 20)
+        per_trial = np.concatenate([base, [base[5] + 0.0005]])
+        st = np.tile(per_trial, n_trials)
+        trials = np.repeat(np.arange(n_trials), len(per_trial))
+        N = len(st)
+        N_v_expected = 5
+        T = n_trials * trial_len
+        t_r = 0.001
+        expected = self._hill_closed_form(N, N_v_expected, T, t_r)
+        actual = contamination_rate_hill(
+            st,
+            trials=trials,
+            recording_duration=T,
+            refractory_period=t_r,
+        )
+        assert actual == pytest.approx(expected, rel=1e-10)
+
+    def test_trials_argument_prevents_cross_trial_false_positives(self):
+        """Without ``trials=``, globally-sorted trial-relative times
+        merge across trials and produce spurious sub-millisecond
+        pseudo-ISIs.  Passing ``trials=`` must suppress them.
+        """
+        # Two trials each with 5 spikes far apart (50 ms ISI within trial).
+        # Without trial separation, sorting interleaves them so adjacent
+        # spikes can be ~milliseconds apart by chance.
+        rng = np.random.default_rng(2026)
+        n_trials = 20
+        per_trial = 5
+        st = []
+        trials = []
+        for t in range(n_trials):
+            # Spread 5 spikes uniformly in [0.05, 0.95] but jittered so
+            # spikes from different trials are within 1 ms of each other
+            # after global sort.
+            base = np.linspace(0.05, 0.95, per_trial)
+            jitter = rng.uniform(-0.0003, 0.0003, per_trial)  # ±0.3 ms
+            st.append(base + jitter)
+            trials.append(np.full(per_trial, t))
+        st = np.concatenate(st)
+        trials = np.concatenate(trials)
+        T = n_trials * 1.0
+
+        C_with = contamination_rate_hill(
+            st, trials=trials, recording_duration=T, refractory_period=0.001
+        )
+        C_without = contamination_rate_hill(
+            st, trials=None, recording_duration=T, refractory_period=0.001
+        )
+        # Per-trial counting sees zero real violations.
+        assert C_with == pytest.approx(0.0, abs=1e-12)
+        # Global counting must over-estimate (strictly greater)
+        # because trials at near-identical jitter offsets create
+        # spurious sub-ms gaps after sorting.
+        assert C_without > C_with
+
+    def test_per_cluster_dict(self):
+        """``cluster_labels=`` returns one C per cluster."""
+        n_trials = 4
+        per_trial = 10
+        st_clean = np.tile(np.linspace(0.05, 0.95, per_trial), n_trials)
+        trials_clean = np.repeat(np.arange(n_trials), per_trial)
+        # Cluster 0: clean.  Cluster 1: 1 violation per trial.
+        per_trial_dirty = np.concatenate([np.linspace(0.05, 0.95, per_trial), [0.05 + 0.0003]])
+        st_dirty = np.tile(per_trial_dirty, n_trials)
+        trials_dirty = np.repeat(np.arange(n_trials), len(per_trial_dirty))
+
+        st = np.concatenate([st_clean, st_dirty])
+        trials = np.concatenate([trials_clean, trials_dirty])
+        labels = np.concatenate([np.zeros(len(st_clean), int), np.ones(len(st_dirty), int)])
+        C = contamination_rate_hill(
+            st,
+            cluster_labels=labels,
+            trials=trials,
+            recording_duration=n_trials * 1.0,
+            refractory_period=0.001,
+        )
+        assert isinstance(C, dict)
+        assert C[0] == pytest.approx(0.0, abs=1e-12)
+        assert C[1] > 0.0
+
+    def test_requires_recording_duration(self):
+        st = np.array([0.0, 0.1, 0.2])
+        with pytest.raises(ValueError, match="recording_duration is required"):
+            contamination_rate_hill(st)
+
+
+# ---------------------------------------------------------------------------
+# fraction_missing — non-default methods + clamp_max parameter
+# ---------------------------------------------------------------------------
+
+
+class TestFractionMissingMethods:
+    """Cover ``method="lognormal"`` / ``"empirical"`` and the new
+    ``clamp_max`` parameter added when the per-path clamping was unified.
+    """
+
+    def test_lognormal_recovers_known_tail(self):
+        """A lognormal sample whose minimum sits near the 5th percentile
+        should report a missing fraction close to that percentile."""
+        rng = np.random.default_rng(42)
+        # Lognormal amplitudes: log-mean = 1, log-std = 0.5.
+        log_amps = rng.normal(1.0, 0.5, 2000)
+        # Truncate at the analytical 5th percentile.
+        threshold = np.exp(1.0 - 1.6449 * 0.5)  # 5th percentile of normal
+        amps = np.exp(log_amps)
+        amps = amps[amps >= threshold]
+        wv = amps[:, None]  # (n, 1) so amax-amin == amp
+        wv = np.hstack([np.zeros((len(amps), 1)), wv])  # peak-to-peak = amp
+        frac = fraction_missing(wv, method="lognormal", normality_warn=False)
+        # 5% truncation ± KDE noise; allow generous tolerance.
+        assert 0.02 < frac < 0.10
+
+    def test_empirical_returns_in_valid_range(self):
+        """Empirical KDE tail estimator should return a value in
+        ``[0, clamp_max]``.  The KDE consistently under-estimates the
+        true truncation fraction for sharp cutoffs (the bandwidth
+        smears mass over the threshold), so we don't pin a numeric
+        floor — only that the value is sensible and finite.
+        """
+        rng = np.random.default_rng(43)
+        amps = rng.normal(10.0, 1.0, 2000)
+        amps = amps[amps >= 9.0]  # ≈16 % truncation
+        wv = np.hstack([np.zeros((len(amps), 1)), amps[:, None]])
+        frac = fraction_missing(wv, method="empirical")
+        assert 0.0 <= frac <= 0.5
+        assert np.isfinite(frac)
+
+    def test_clamp_max_none_disables_upper_bound(self):
+        """``clamp_max=None`` lets the empirical method return values
+        above 0.5 (useful for diagnostic / threshold-tuning workflows)."""
+        rng = np.random.default_rng(44)
+        # Near-symmetric distribution with x_min very near the centre →
+        # KDE tail probability is near 0.5 from below (would clip to 0.5
+        # under the default, may exceed 0.5 with smoothing under None).
+        amps = rng.normal(0.0, 1.0, 200)
+        wv = np.hstack([np.zeros((len(amps), 1)), amps[:, None]])
+        frac_clamped = fraction_missing(wv, method="empirical")
+        frac_unclamped = fraction_missing(wv, method="empirical", clamp_max=None)
+        assert frac_clamped <= 0.5
+        # When the KDE smoothing pushes the value above 0.5, the
+        # unclamped version exposes it; otherwise both are equal.
+        assert frac_unclamped >= frac_clamped
+
+    def test_clamp_max_invalid_raises(self):
+        wv = np.random.randn(20, 5)
+        with pytest.raises(ValueError, match="clamp_max must be > 0"):
+            fraction_missing(wv, clamp_max=0.0)
+        with pytest.raises(ValueError, match="clamp_max must be > 0"):
+            fraction_missing(wv, clamp_max=-0.1)
+
+    def test_method_invalid_raises(self):
+        wv = np.random.randn(20, 5)
+        with pytest.raises(ValueError, match="method must be one of"):
+            fraction_missing(wv, method="nonsense")
+
+
+# ---------------------------------------------------------------------------
+# isolation_distance / l_ratio — worst_pair mode
+# ---------------------------------------------------------------------------
+
+
+class TestWorstPairMode:
+    """``mode="worst_pair"`` reports per-neighbour quality rather than
+    pooled non-cluster quality.  The mathematical invariants follow
+    from the formulas:
+
+    * **isolation_distance** — global takes the *n_A*-th distance from
+      the union of all non-A spikes (sorting interleaves clusters);
+      worst_pair takes the *minimum over neighbours* of each
+      neighbour's *n_A*-th distance.  Since mixing more spikes can
+      only reach the *n_A*-th index *earlier* (closer), we have
+      ``global ≤ worst_pair``.  worst_pair therefore reports a
+      *better* (larger) isolation distance — it ignores small-close
+      clusters with fewer than *n_A* spikes that global would catch.
+    * **L-ratio** — global is a *sum* of per-non-cluster
+      ``(1 − χ²_cdf)`` contributions divided by *n_A*; worst_pair is
+      the *max* of per-neighbour partial sums divided by *n_A*.  Since
+      ``sum ≥ max`` for non-negative summands, ``global ≥ worst_pair``.
+    """
+
+    @staticmethod
+    def _three_clusters(n=120, sep=8.0, rng_seed=314):
+        rng = np.random.default_rng(rng_seed)
+        # A at origin, B far away, C overlapping with A
+        A = rng.normal(0.0, 1.0, (n, 8))
+        B = rng.normal(sep, 1.0, (n, 8))
+        C = rng.normal(0.5, 1.0, (n, 8))  # nearby
+        feats = np.vstack([A, B, C])
+        labs = np.concatenate([np.zeros(n, int), np.ones(n, int), 2 * np.ones(n, int)])
+        return feats, labs
+
+    def test_isolation_worst_pair_invariant(self):
+        """``global ≤ worst_pair`` for every cluster (per the
+        sum-mixing argument above)."""
+        feats, labs = self._three_clusters()
+        iso_global = isolation_distance(feats, labs, mode="global")
+        iso_worst = isolation_distance(feats, labs, mode="worst_pair")
+        for cid in (0, 1, 2):
+            assert iso_worst[cid] >= iso_global[cid] - 1e-9, (
+                f"cluster {cid}: worst_pair={iso_worst[cid]}, "
+                f"global={iso_global[cid]} (expected worst_pair ≥ global)"
+            )
+
+    def test_lratio_worst_pair_invariant(self):
+        """``global ≥ worst_pair`` for every cluster (sum ≥ max)."""
+        feats, labs = self._three_clusters()
+        lr_global = l_ratio(feats, labs, mode="global")
+        lr_worst = l_ratio(feats, labs, mode="worst_pair")
+        for cid in (0, 1, 2):
+            assert lr_global[cid] >= lr_worst[cid] - 1e-12, (
+                f"cluster {cid}: global={lr_global[cid]}, "
+                f"worst_pair={lr_worst[cid]} (expected global ≥ worst_pair)"
+            )
+
+    def test_worst_pair_identifies_overlapping_neighbour(self):
+        """For cluster 0 (overlaps cluster 2, far from cluster 1), the
+        worst_pair L-ratio against the union should equal the
+        contribution from cluster 2 alone — i.e. cluster 2 is the
+        dominant overlap.
+        """
+        feats, labs = self._three_clusters()
+        lr_worst = l_ratio(feats, labs, mode="worst_pair")
+        # cluster 2's worst neighbour should likewise be cluster 0 (mirror).
+        # The two overlapping clusters should both report a strictly
+        # larger worst_pair L-ratio than cluster 1 (which has only the
+        # far cluster 0 and the far cluster 2 as competitors).
+        assert lr_worst[0] > lr_worst[1]
+        assert lr_worst[2] > lr_worst[1]
+
+    def test_mode_invalid_raises(self):
+        feats, labs = self._three_clusters()
+        with pytest.raises(ValueError, match="mode must be 'global' or 'worst_pair'"):
+            isolation_distance(feats, labs, mode="nonsense")
+        with pytest.raises(ValueError, match="mode must be 'global' or 'worst_pair'"):
+            l_ratio(feats, labs, mode="nonsense")

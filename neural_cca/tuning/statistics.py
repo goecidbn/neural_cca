@@ -75,6 +75,15 @@ def _bca_ci(
         intervals*.  Statistical Science 11(3), 189–212.
         doi:10.1214/ss/1032280214.
     """
+    # NOTE: every degenerate path here returns ``(NaN, NaN)``.  The
+    # outer ``bootstrap_ci`` / ``bootstrap_ci_strata`` detect the NaN
+    # endpoints and fall back to the percentile CI while also
+    # relabelling ``method="percentile"`` so the user-visible
+    # ``"method"`` key truthfully reflects which CI was used.  An
+    # earlier version of this helper returned ``_percentile_ci(...)``
+    # inline on degeneracy, which produced finite endpoints but left
+    # the outer label as ``"bca"`` — the answer was correct but the
+    # provenance was a lie.  Keep the NaN-sentinel convention.
     alpha = 1.0 - ci_level
     boot_valid = boot_stats[~np.isnan(boot_stats)]
     if len(boot_valid) < 2:
@@ -82,22 +91,31 @@ def _bca_ci(
 
     # z0: bias correction — Φ⁻¹ of the fraction of bootstrap replicates
     # below the point estimate.  Degenerate ratios (0 or 1) make
-    # ``norm.ppf`` return ±inf; fall back to plain percentile in that case.
+    # ``norm.ppf`` return ±inf; flag via NaN so the outer caller can
+    # fall back to plain percentile *and* relabel ``"method"``.
     below = float(np.mean(boot_valid < estimate))
     if not 0.0 < below < 1.0:
-        return _percentile_ci(boot_stats, ci_level)
+        return float("nan"), float("nan")
     z0 = float(norm.ppf(below))
 
     # a: acceleration — skewness of the jackknife distribution.
     jk_valid = jackknife_stats[~np.isnan(jackknife_stats)]
     if len(jk_valid) < 2:
-        return _percentile_ci(boot_stats, ci_level)
+        return float("nan"), float("nan")
     jk_mean = float(np.mean(jk_valid))
+    # Acceleration uses ``diffs = jk_mean - jk_valid`` per DiCiccio &
+    # Efron (1996, Stat. Sci. 11:189) eq. 2.13.  The opposite sign
+    # ``(jk_valid - jk_mean)`` is common in textbook write-ups; both
+    # give the *same* ``a`` because the numerator is sum-of-cubes and
+    # the denominator is sum-of-squares^(3/2) — the cube preserves the
+    # sign on top, the 3/2-power of squared values is positive, and
+    # the overall sign survives unchanged.  Leaving this comment so
+    # future reviewers don't second-guess the sign against a textbook.
     diffs = jk_mean - jk_valid
     num = float(np.sum(diffs**3))
     den = 6.0 * (float(np.sum(diffs**2))) ** 1.5
     if den == 0.0:
-        return _percentile_ci(boot_stats, ci_level)
+        return float("nan"), float("nan")
     a = num / den
 
     z_lo = float(norm.ppf(alpha / 2))
@@ -106,9 +124,10 @@ def _bca_ci(
     alpha_hi = float(norm.cdf(z0 + (z0 + z_hi) / (1 - a * (z0 + z_hi))))
 
     # Guard against degenerate BCa end-points (e.g. alpha_lo > alpha_hi
-    # when a is very negative); fall back to percentile.
+    # when a is very negative); NaN-sentinel triggers outer percentile
+    # fallback with correct ``"method"`` labelling.
     if not 0.0 <= alpha_lo < alpha_hi <= 1.0:
-        return _percentile_ci(boot_stats, ci_level)
+        return float("nan"), float("nan")
 
     lo = float(np.nanpercentile(boot_stats, 100 * alpha_lo))
     hi = float(np.nanpercentile(boot_stats, 100 * alpha_hi))

@@ -158,8 +158,16 @@ def temporal_frequency_tuning(
 
         - ``"temporal_freqs"`` — unique TFs tested (includes 0 if present)
         - ``"amplitudes"`` — response amplitude per TF (same order)
-        - ``"preferred_tf"`` — TF with strongest response (may be 0
-          for cells with the strongest response on blank trials)
+        - ``"preferred_tf"`` — positive TF with strongest response.
+          TF=0 ("blank") trials are excluded from this argmax for the
+          same reason they are stripped from the log-Gaussian fit:
+          a blank is *not* a low-temporal-frequency grating, it is a
+          spontaneous-activity sample and has no log-frequency
+          representation.  Returning ``preferred_tf=0`` would let a
+          spontaneously-active cell report a "preferred" stimulus
+          that was never shown.  ``np.nan`` when no positive-TF
+          sample is present.  The blank response is surfaced
+          separately as ``baseline_response``.
         - ``"bandwidth"`` — HWHH of log-Gaussian fit (octaves), or
           ``np.inf`` on failure.  The fit is computed on
           *positive-TF* samples only because log₂(0) is undefined;
@@ -233,10 +241,6 @@ def temporal_frequency_tuning(
                     f1_vals.append(2.0 * float(np.abs(fft_v[idx1])) / N)
             amplitudes[i] = float(np.mean(f1_vals)) if f1_vals else 0.0
 
-    # Find preferred TF
-    pref_idx = int(np.argmax(amplitudes))
-    preferred_tf = float(unique_tfs[pref_idx])
-
     # Blank (TF=0) trials are categorically different from low-TF
     # gratings — they have no log-frequency representation.  Strip
     # them from the *fit* and surface their mean response separately
@@ -252,6 +256,17 @@ def temporal_frequency_tuning(
     else:
         baseline_response = np.nan
 
+    # Preferred TF — argmax over *positive* TFs only.  A blank trial
+    # is a spontaneous-activity sample, not a "0 Hz grating"; returning
+    # preferred_tf=0 for a spontaneously-active cell would advertise
+    # a stimulus that was never shown.  Use ``baseline_response``
+    # for the blank-trial level.
+    if len(fit_tfs) > 0:
+        pref_positive_idx = int(np.argmax(fit_amps))
+        preferred_tf = float(fit_tfs[pref_positive_idx])
+    else:
+        preferred_tf = float("nan")
+
     # Fit log-Gaussian on the positive-TF subset only.
     fit_curve = None
     bandwidth = np.inf
@@ -259,7 +274,9 @@ def temporal_frequency_tuning(
     if len(fit_tfs) >= 4 and np.any(fit_amps > 0):
         try:
             a0 = float(np.max(fit_amps))
-            pref_positive_idx = int(np.argmax(fit_amps))
+            # ``pref_positive_idx`` is computed above for ``preferred_tf``;
+            # reuse it so the fit's mu0 seed and the reported preference
+            # stay consistent (same argmax, same tie-breaking).
             mu0 = float(np.log2(fit_tfs[pref_positive_idx]))
             popt, _ = curve_fit(
                 _log_gaussian,

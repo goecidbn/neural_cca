@@ -417,6 +417,7 @@ def evaluate_sorting(
         contam = contamination_rate_hill(
             st,
             cluster_labels=cluster_labels,
+            trials=data.trials,
             recording_duration=rec_duration,
             refractory_period=refractory_period,
         )
@@ -545,10 +546,10 @@ def run_sorting_pipeline(
         4. (Optional) Compute per-cluster orientation selectivity.
         5. (Optional) Produce a diagnostic summary figure.
 
-    Single-cluster (``k = 1``) mode
-    -------------------------------
-    The pipeline accepts ``n_clusters=1`` as a first-class
-    supported path.  Use it for:
+    Notes
+    -----
+    **Single-cluster (``k = 1``) mode.** The pipeline accepts
+    ``n_clusters=1`` as a first-class supported path.  Use it for:
 
     * **Pre-isolated channels.** Upstream tooling (Kilosort export,
       manual curation) already restricted a recording to a single

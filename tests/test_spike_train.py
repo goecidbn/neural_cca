@@ -11,6 +11,7 @@ from neural_cca.spike_train.analysis import (
     fano_factor,
     firing_rate_stability,
     first_spike_latency,
+    first_spike_latency_thresholded,
     isi_violation_rate,
     local_variation,
     minimal_spike_train_analysis,
@@ -615,3 +616,123 @@ class TestFirstSpikeLatency:
         result = first_spike_latency(st, trials)
         for key in ("latencies", "mean", "median", "std", "frac_responsive"):
             assert key in result
+
+
+# ---------------------------------------------------------------------------
+# First spike latency — thresholded (Reich et al. 1997 style)
+# ---------------------------------------------------------------------------
+
+
+class TestFirstSpikeLatencyThresholded:
+    """Numeric regressions for the response-detection latency variant.
+
+    Constructed with a known low baseline rate and a sharp response
+    burst at a known offset; the function should recover that offset
+    within one detection bin.
+    """
+
+    @staticmethod
+    def _build_response(
+        n_trials=30,
+        baseline_hz=2.0,
+        response_hz=80.0,
+        stim_onset=0.5,
+        response_latency=0.05,
+        response_duration=0.1,
+        trial_dur=1.0,
+        rng_seed=2026,
+    ):
+        rng = np.random.default_rng(rng_seed)
+        st_all, tr_all = [], []
+        for t in range(n_trials):
+            # Pre-stimulus baseline: Poisson at baseline_hz on [0, stim_onset).
+            n_b = rng.poisson(baseline_hz * stim_onset)
+            base = rng.uniform(0.0, stim_onset, n_b)
+            # Response burst: Poisson at response_hz on
+            # [stim_onset + latency, stim_onset + latency + duration].
+            n_r = rng.poisson(response_hz * response_duration)
+            resp = rng.uniform(
+                stim_onset + response_latency,
+                stim_onset + response_latency + response_duration,
+                n_r,
+            )
+            # Post-burst: back to baseline through end of trial.
+            post_start = stim_onset + response_latency + response_duration
+            if post_start < trial_dur:
+                n_p = rng.poisson(baseline_hz * (trial_dur - post_start))
+                post = rng.uniform(post_start, trial_dur, n_p)
+            else:
+                post = np.array([])
+            spikes = np.sort(np.concatenate([base, resp, post]))
+            st_all.append(spikes)
+            tr_all.append(np.full(len(spikes), t))
+        return np.concatenate(st_all), np.concatenate(tr_all)
+
+    def test_recovers_known_response_latency(self):
+        """Burst at 50 ms post-onset should yield mean latency ≈ 50 ms."""
+        true_latency = 0.05
+        st, trials = self._build_response(response_latency=true_latency, response_hz=100.0)
+        result = first_spike_latency_thresholded(
+            st,
+            trials,
+            stim_onset=0.5,
+            response_window=0.2,
+            baseline_factor=2.0,
+            detect_bin=0.005,
+        )
+        assert result["frac_responsive"] > 0.8
+        # Within one detect_bin + half-burst-onset jitter of the truth.
+        assert result["mean"] == pytest.approx(true_latency, abs=0.015)
+
+    def test_silent_cell_returns_unresponsive(self):
+        """A cell that fires only baseline spikes should report
+        ``frac_responsive`` close to zero.  Use ``min_consecutive=3``
+        to suppress single-spike triggers (a single 5 ms bin with one
+        spike yields 200 Hz instantaneous rate, which clears any
+        baseline_factor threshold trivially)."""
+        rng = np.random.default_rng(99)
+        n_trials = 30
+        st, tr = [], []
+        for t in range(n_trials):
+            n = rng.poisson(1.0)  # ~1 Hz baseline across the whole trial
+            st.append(rng.uniform(0.0, 1.0, n))
+            tr.append(np.full(n, t))
+        st = np.concatenate(st)
+        tr = np.concatenate(tr)
+        result = first_spike_latency_thresholded(
+            st,
+            tr,
+            stim_onset=0.5,
+            response_window=0.2,
+            baseline_factor=3.0,
+            baseline_floor_hz=2.0,
+            min_consecutive=3,
+        )
+        # Three consecutive 5 ms bins each >2× baseline rate is a high
+        # bar for 1 Hz background Poisson on a 200 ms window.
+        assert result["frac_responsive"] < 0.15
+
+    def test_returns_expected_keys(self):
+        st, trials = self._build_response()
+        result = first_spike_latency_thresholded(st, trials, stim_onset=0.5)
+        for key in (
+            "latencies",
+            "mean",
+            "median",
+            "std",
+            "frac_responsive",
+            "baseline_rate_hz",
+            "detection_threshold_hz",
+        ):
+            assert key in result
+
+    def test_invalid_params_raise(self):
+        st, trials = self._build_response()
+        with pytest.raises(ValueError):
+            first_spike_latency_thresholded(st, trials, detect_bin=0.0)
+        with pytest.raises(ValueError):
+            first_spike_latency_thresholded(st, trials, response_window=0.0)
+        with pytest.raises(ValueError):
+            first_spike_latency_thresholded(st, trials, baseline_factor=0.5)
+        with pytest.raises(ValueError):
+            first_spike_latency_thresholded(st, trials, min_consecutive=0)

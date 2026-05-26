@@ -139,7 +139,36 @@ def batch_sort_experiment(
     if electrode_indices is not None:
         all_electrodes = np.array([e for e in electrode_indices if e in all_electrodes])
 
-    # Stimulus angles
+    # Stimulus angles.  Validate that ``tlabel2angle`` covers every
+    # observed stimulus label up-front and raise a clear error rather
+    # than letting the comprehension below blow up with a bare KeyError
+    # deep in the call stack.  Matches the validation
+    # ``vision_ice_analysis.load_from_visioniceio`` does at the bridge
+    # layer.  When ``compute_tuning=False`` we relax the requirement
+    # and fill missing labels with ``0.0`` — the angles are still
+    # written into ``SortingData`` (the container always carries the
+    # field) but never consumed for analysis, so the placeholder is
+    # harmless.  Real coverage is still required for the tuning path
+    # because ``get_os_metrics`` would otherwise alias unrelated
+    # conditions to the same angle.
+    observed_labels = sorted({int(lbl) for lbl in ds.stim_label.values})
+    missing = [lbl for lbl in observed_labels if lbl not in tlabel2angle]
+    if missing:
+        if compute_tuning:
+            raise KeyError(
+                f"tlabel2angle does not cover stimulus labels {missing}. "
+                f"Observed labels: {observed_labels}. "
+                f"Mapped labels:   {sorted(tlabel2angle.keys())}. "
+                f"Pass an explicit tlabel2angle covering every label "
+                f"present in the recording (or disable tuning with "
+                f"compute_tuning=False if angles are not meaningful for "
+                f"this protocol — e.g. a mixed dot/grating-contrast "
+                f"design where labels do not all correspond to one "
+                f"orientation per stimulus type)."
+            )
+        # compute_tuning is off — fill the gaps so SortingData has the
+        # full angles array but downstream never relies on them.
+        tlabel2angle = {**tlabel2angle, **{lbl: 0.0 for lbl in missing}}
     angles = np.array(
         [tlabel2angle[int(lbl)] for lbl in ds.stim_label.values],
         dtype=np.float64,

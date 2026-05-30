@@ -1,6 +1,5 @@
 """Spike sorting pipeline and quality metrics."""
 
-from .batch import batch_sort_experiment
 from .containers import SortingData, SortingResult
 from .io_util import load_from_arrays, read_zarr_sorting, to_zarr_clustered, to_zarr_flat
 from .metrics import (
@@ -45,7 +44,6 @@ __all__ = [
     "evaluate_sorting",
     "evaluate_os_per_cluster",
     "run_sorting_pipeline",
-    "batch_sort_experiment",
     "neg_silhouette_score",
     "spikes_before_stimulus",
     "est_snr",

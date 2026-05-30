@@ -50,8 +50,6 @@ from .sorting import (
     SortingData,
     SortingResult,
     amplitude_drift,
-    # Batch driver
-    batch_sort_experiment,
     calc_weighted_snr,
     contamination_rate_hill,
     d_prime,

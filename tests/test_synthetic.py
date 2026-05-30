@@ -257,62 +257,6 @@ class TestMakeTwoUnitDemo:
 
 
 # ======================================================================
-# batch_sort_experiment — smoke / contract
-# ======================================================================
-
-
-class TestBatchSortExperiment:
-    def test_exposed_at_sorting_namespace(self):
-        """Public re-export contract: importable from the sorting
-        subpackage barrel and present in its ``__all__``."""
-        from neural_cca import sorting as _sorting
-
-        assert "batch_sort_experiment" in _sorting.__all__
-        assert callable(_sorting.batch_sort_experiment)
-
-    def test_missing_data_source_raises(self, tmp_path):
-        """Passing a non-existent path errors out cleanly with a
-        :class:`FileNotFoundError` — exercises the entry-point guard
-        without requiring a real experiment on disk.  ``stim_window``
-        and ``n_angle_steps`` are now required; pass explicit values
-        so we test the file-not-found path rather than the
-        missing-required-arg guard."""
-        pytest.importorskip("xarray")
-        from neural_cca.sorting.batch import batch_sort_experiment
-
-        bogus = tmp_path / "does_not_exist.zarr"
-        with pytest.raises(FileNotFoundError, match="Data source not found"):
-            batch_sort_experiment(
-                data_source=bogus,
-                stim_window=(0.5, 2.5),
-                n_angle_steps=12,
-            )
-
-    def test_missing_stim_window_raises(self, tmp_path):
-        """Omitting *stim_window* raises a clear ``ValueError`` rather
-        than silently using a Natal-specific default."""
-        pytest.importorskip("xarray")
-        from neural_cca.sorting.batch import batch_sort_experiment
-
-        bogus = tmp_path / "does_not_exist.zarr"
-        with pytest.raises(ValueError, match="stim_window is required"):
-            batch_sort_experiment(data_source=bogus, n_angle_steps=12)
-
-    def test_missing_angle_mapping_raises(self, tmp_path):
-        """Omitting both *tlabel2angle* and *n_angle_steps* raises a
-        clear ``ValueError``."""
-        pytest.importorskip("xarray")
-        from neural_cca.sorting.batch import batch_sort_experiment
-
-        bogus = tmp_path / "does_not_exist.zarr"
-        with pytest.raises(ValueError, match="tlabel2angle or n_angle_steps"):
-            batch_sort_experiment(
-                data_source=bogus,
-                stim_window=(0.5, 2.5),
-            )
-
-
-# ======================================================================
 # Public-API top-level re-export contract
 # ======================================================================
 

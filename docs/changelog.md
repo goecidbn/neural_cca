@@ -7,21 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-30
+
+### Removed
+
+- **`batch_sort_experiment` and the entire `sorting/batch.py` module
+  moved to the `vision_ice_analysis` bridge.** The driver imported
+  `visioniceio.experiment.Experiment` directly — a leaf→leaf
+  dependency the working-tree architecture forbids (`../CLAUDE.md` →
+  dependency direction). The bridge now owns directory/zarr loading
+  and the per-electrode loop; `neural_cca` keeps only array-level
+  primitives (`run_sorting_pipeline`, `load_from_arrays`).
+  `from neural_cca import batch_sort_experiment` no longer resolves.
+  New `tests/test_architecture.py` fails CI if any `neural_cca` module
+  imports `visioniceio` again.
+
 ### Changed
 
-- `sorting/batch.py`: `batch_sort_experiment()` now treats
-  `stim_window`, `tlabel2angle`, `n_angle_steps`, and
-  `stim_frequency` as **explicit** parameters rather than carrying
-  Natal-specific defaults. `stim_window=None` and the combination
-  `tlabel2angle=None` *and* `n_angle_steps=None` now raise
-  `ValueError` with a pointer to the LabView 30-degree convention.
-  `stim_frequency=None` (the new default) disables F1 / F0
-  computation in the per-cluster tuning block. The eight sibling
-  functions that still carry the legacy `(0.5, 2.5)` /
-  `stim_frequency=2.0` defaults gained a one-line
+- Eight functions still carrying the legacy `(0.5, 2.5)` /
+  `stim_frequency=2.0` Natal defaults gained a one-line
   `# NOTE: Natal-specific default; v0.2.0 will make this required.`
   comment so the broader sweep is grep-findable (see the v0.2.0
-  Roadmap section below).
+  Roadmap section below). (The `batch_sort_experiment` portion of
+  this change left with the module — see *Removed* above.)
 - `sorting/metrics.py`: `rpvs()` gained a `trials` keyword that
   mirrors the B3 trial-aware pattern already used in
   `contamination_rate_hill()`. With `trials=` supplied, refractory
@@ -85,11 +93,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cache-dependency-path: pyproject.toml`.
 - `lint.yml` pins `ruff==0.15.14` to match the bridge.
 
-### Roadmap (v0.2.0)
+### Roadmap (post-0.2.0)
 
-- Move directory→Dataset loading out of `sorting/batch.py` and into
-  the bridge (`vision_ice_analysis`); `batch_sort_experiment` to
-  accept only `xr.Dataset` or a zarr path.
+- ✅ Done (this release): directory→Dataset loading and
+  `batch_sort_experiment` no longer live in `sorting/batch.py` — the
+  module moved to the `vision_ice_analysis` bridge (see *Removed*).
 - Sweep remaining Natal-specific defaults
   (`stim_window=(0.5, 2.5)`, `stim_frequency=2.0`) from 8 sibling
   files: `sorting/containers.py`, `tuning/temporal.py`,

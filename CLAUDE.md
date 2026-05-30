@@ -70,12 +70,13 @@ neural_cca/
    `end <= onset` — a typo here used to silently NaN out firing
    rates downstream.
 
-## 0.1.2 + [Unreleased] changes a fresh agent **will not infer** from skimming
+## v0.1.3–v0.2.0 changes a fresh agent **will not infer** from skimming
 
 These are the changes most likely to bite if assumed away.  The
-released line is at v0.1.2; the items below ship under
-`[Unreleased]` and will land as **v0.1.3** (target).  Read
-`docs/changelog.md` `[Unreleased]` for the full list.
+`gosi`/`sta`/`bca` items below shipped in **v0.1.3**; the
+batch-driver removal and the trial-aware / hardening items ship in
+**v0.2.0**.  Read `docs/changelog.md` for the authoritative
+per-version list.
 
 ### Semantic flip: `gosi` / `gdsi`
 
@@ -134,6 +135,17 @@ but the docstrings now point callers at
 V1-literature-standard **permutation** test.  `is_significant` in
 that function is now decided by the permutation `p` alone (the
 Rayleigh is still reported, but is descriptive).
+
+### Removed: `batch_sort_experiment` (moved to the bridge)
+
+`neural_cca.sorting.batch` is **gone**.  The directory/zarr-loading
+batch driver imported `visioniceio` directly — a leaf→leaf dependency
+the working-tree architecture forbids — so it now lives in the
+`vision_ice_analysis` bridge.  `from neural_cca import
+batch_sort_experiment` no longer resolves; loop `run_sorting_pipeline`
+yourself for multi-electrode runs, or call the bridge.
+`tests/test_architecture.py` enforces "no `visioniceio` import inside
+`neural_cca`" so the coupling cannot silently return.
 
 ## Test & lint commands
 

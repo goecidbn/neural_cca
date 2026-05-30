@@ -57,12 +57,15 @@ neural_cca/
    plain `PCG64` (numpy/numpy#16313).  Never construct
    `np.random.default_rng()` directly in this package.
 
-4. **`scikit-learn` random_state coercion.**  sklearn estimators
-   take `int` / `RandomState`, not `Generator`.
-   `sorting.sorting._as_seed()` materialises an int from a
-   `Generator` by drawing one number from it (so successive calls
-   with the same `Generator` produce different sklearn seeds —
-   matching the consumed-stream expectation).
+4. **`scikit-learn` random_state coercion.**  sklearn needs a uint32
+   `random_state` (`[0, 2**32)`), not a `Generator`.
+   `sorting.sorting._as_seed()` always returns one: an `int` (incl. a
+   ~128-bit master seed) is mixed down through `SeedSequence`
+   (deterministic), and a `Generator` yields one drawn uint32
+   (consumed-stream semantics).  **Never** hand a raw seed to sklearn —
+   a 128-bit one raises `InvalidParameterError`.
+   `tests/test_rng_policy.py` enforces this and bans `default_rng` /
+   `RandomState` / legacy `np.random` / plain `PCG64` in package code.
 
 5. **`stim_window = (onset, end)`.**  The trial spans
    `[0, stim_window[1]]`; `onset` separates spontaneous from

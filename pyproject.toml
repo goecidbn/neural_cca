@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "neural-cca"
-version = "0.2.0"
+version = "0.3.0"
 description = "Spike sorting, spike train statistics, and orientation selectivity analysis for extracellular recordings"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -66,7 +66,12 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "N"]
+# NPY002 bans the legacy ``np.random.*`` / ``RandomState`` global API in
+# shipping code — part of the RNG policy (CROSS_CHECKS.md): RNGs come only
+# from ``make_rng`` (PCG64DXSM) and sklearn seeds only from ``_as_seed``.
+# ``default_rng`` and plain ``PCG64`` are additionally banned by
+# ``tests/test_rng_policy.py`` (ruff has no rule for those).
+select = ["E", "F", "W", "I", "UP", "N", "NPY002"]
 # Scientific code follows mathematical notation for variable/argument names
 # (e.g. `A`, `R0`, `X`, `Y`); the pep8-naming checks (N803, N806) would force
 # rewriting equations into lowercase and obscure the math.
@@ -83,7 +88,9 @@ ignore = ["N803", "N806"]
 ]
 # Tests: allow long assertion messages and imports that follow
 # pytest.importorskip() guards.
-"tests/*.py" = ["E501", "E402"]
+# NPY002 (no legacy np.random) is a shipping-code rule; test fixtures
+# may use np.random.default_rng / randn for brevity (package-only scope).
+"tests/*.py" = ["E501", "E402", "NPY002"]
 
 [tool.ruff.format]
 quote-style = "double"

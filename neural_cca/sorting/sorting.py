@@ -57,22 +57,34 @@ PreprocessMode = Literal["none", "center", "zscore", "pca", "zscore_pca"]
 
 
 def _as_seed(rng: np.random.Generator | int | None) -> int | None:
-    """Coerce an rng spec to an integer seed for sklearn estimators.
+    """Coerce an rng spec to a **uint32** seed for sklearn estimators.
 
-    sklearn estimators accept ``None``, ``int``, or ``RandomState`` for
-    their ``random_state`` argument but not :class:`numpy.random.Generator`.
-    When the user passes a ``Generator``, we sample one int from it so the
-    estimator gets a deterministic seed *derived from* the generator.
-    Repeated calls with the same Generator therefore produce different
-    sklearn seeds — this matches the usual expectation that a Generator
-    is consumed as you draw from it.
+    sklearn's ``random_state`` must fit in a uint32 (``[0, 2**32)``); a
+    :class:`numpy.random.Generator` is not accepted. This helper always
+    returns a valid, well-mixed seed:
+
+    * ``int`` (any size, including the bridge's ~128-bit
+      ``SeedSequence().entropy`` master seed) → a uint32 **derived via
+      ``SeedSequence``**, never the raw integer. A raw 128-bit seed
+      raises ``InvalidParameterError`` inside ``KMeans`` / ``PCA``;
+      routing through ``SeedSequence`` mixes the entropy down to a
+      uint32 *deterministically* (same master seed → same sklearn
+      seed), so the recorded provenance seed stays replayable.
+    * ``Generator`` → one uint32 drawn from its stream (repeated calls
+      with the same Generator therefore yield different sklearn seeds,
+      matching the consumed-stream expectation).
+    * ``None`` → ``None`` (sklearn falls back to its global RNG).
+
+    See ``CROSS_CHECKS.md`` → *RNG policy*. The
+    ``tests/test_rng_policy.py`` round-trip guards this against
+    regression.
     """
     if rng is None:
         return None
-    if isinstance(rng, (int, np.integer)):
-        return int(rng)
     if isinstance(rng, np.random.Generator):
         return int(rng.integers(0, 2**31 - 1))
+    if isinstance(rng, (int, np.integer)):
+        return int(np.random.SeedSequence(int(rng)).generate_state(1, dtype=np.uint32)[0])
     raise TypeError(f"rng must be a Generator, int, or None; got {type(rng).__name__}")
 
 

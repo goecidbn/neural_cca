@@ -320,7 +320,11 @@ class TestPipelinePreprocess:
             "run_sorting_pipeline must pass rng to evaluate_os_per_cluster "
             "for per-cluster bootstrap reproducibility."
         )
-        assert kwargs["rng"] == 12345
+        # run_sorting_pipeline coerces rng once via _as_seed (a SeedSequence-
+        # derived uint32 since neural_cca 0.3.0, not the raw int) and shares
+        # that exact seed with the OS bootstrap, so per-cluster CIs stay
+        # reproducible from the master seed.
+        assert kwargs["rng"] == _sorting_mod._as_seed(12345)
 
     def test_default_preprocess_is_zscore_pca(self):
         """The defensible methods-section pipeline is the default.

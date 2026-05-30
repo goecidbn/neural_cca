@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-30
+
+### Changed
+
+- **BREAKING — `_as_seed` now derives a uint32 sklearn `random_state`
+  via `SeedSequence` instead of passing the integer through.** Fixes
+  the bug where a ~128-bit master seed (e.g. the bridge's
+  `SeedSequence().entropy`, recorded in `provenance`) raised
+  `InvalidParameterError` in `KMeans` / `PCA` — the recorded seed
+  could not be replayed. Any int (incl. 128-bit) now yields a valid,
+  deterministic, well-mixed seed. *Reproducibility note:* a given
+  nominal integer seed maps to a different clustering result than in
+  0.2.x; the logged master seed remains the reproducibility key.
+
+### Added
+
+- `tests/test_rng_policy.py`: an AST guard that fails CI if package
+  code uses `default_rng` / `RandomState` / legacy `np.random.*` /
+  plain `PCG64` (only `make_rng` and `_as_seed` may construct RNGs),
+  plus `_as_seed` uint32 + determinism property tests and a 128-bit
+  `SeedSequence().entropy` round-trip through `run_sorting_pipeline`
+  (the regression whose absence let the seed bug ship).
+- ruff `NPY002` enabled on package code; test fixtures are exempt via
+  a per-file ignore.
+
 ## [0.2.0] - 2026-05-30
 
 ### Removed

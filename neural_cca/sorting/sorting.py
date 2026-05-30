@@ -396,10 +396,20 @@ def evaluate_sorting(
         sil_mean = float(silhouette_score(feat, cluster_labels))
         neg_sil = neg_silhouette_score(feat, cluster_labels, relative=True)
     abs_rpvs = rpvs(
-        st, cluster_labels, refractory_period=refractory_period, relative=False, all_clusters=True
+        st,
+        cluster_labels,
+        trials=data.trials,
+        refractory_period=refractory_period,
+        relative=False,
+        all_clusters=True,
     )
     rel_rpvs = rpvs(
-        st, cluster_labels, refractory_period=refractory_period, relative=True, all_clusters=True
+        st,
+        cluster_labels,
+        trials=data.trials,
+        refractory_period=refractory_period,
+        relative=True,
+        all_clusters=True,
     )
     snr_w = calc_weighted_snr(wv, cluster_labels)
 

@@ -277,7 +277,9 @@ def get_os_metrics(
     all_clusters: bool = True,
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_window: tuple[float, float] = (0.5, 2.5),
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_frequency: float | None = 2.0,
     return_verbose: int = 1,
     fit_model: str | None = None,

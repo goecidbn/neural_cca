@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -383,11 +385,92 @@ class TestRpvsValidation:
             rpvs(st, refractory_period=bad_refractory)
 
     def test_positive_refractory_works(self):
-        """Sanity: the validation doesn't break the happy path."""
+        """Sanity: the validation doesn't break the happy path.
+
+        Suppresses the new ``trials=None`` warning so the test signal
+        isn't buried by it; the trial-aware behaviour is exercised in
+        :class:`TestRpvsTrialAware`.
+        """
         st = np.array([0.0, 0.0005, 0.001, 0.0025])
-        result = rpvs(st, refractory_period=0.001, relative=False)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            result = rpvs(st, refractory_period=0.001, relative=False)
         assert isinstance(result, int)
         assert result >= 0
+
+
+# ---------------------------------------------------------------------------
+# rpvs — trial-aware counting (S1: mirrors the B3 contamination_rate_hill
+# pattern; cross-trial ISIs must NOT inflate the violation count when the
+# package-wide trial-relative convention is used)
+# ---------------------------------------------------------------------------
+
+
+class TestRpvsTrialAware:
+    def test_trials_none_emits_warning(self):
+        """Omitting *trials* should fire a :class:`RuntimeWarning` so
+        the user is aware that trial-relative spike times can leak
+        cross-trial pseudo-ISIs into the violation count."""
+        st = np.array([0.0, 0.0005, 0.0015, 0.003])
+        with pytest.warns(RuntimeWarning, match="trials=None"):
+            rpvs(st, refractory_period=0.001)
+
+    def test_cross_trial_pair_not_counted(self):
+        """Two spikes at trial-relative t=2.4 s (trial 0) and t=2.5 s
+        (trial 1) produce a 100 ms ISI under a naive global ``np.diff``
+        — but they sit in *different trials* and must not count as a
+        refractory-period violation under the trial-aware path.
+
+        The legacy (``trials=None``) path globally sorts and would
+        count them.  With ``trials=`` supplied the count must be 0.
+        """
+        # Inter-spike spacing within trials >> 1 ms so the only
+        # candidate violation is the cross-trial 100 ms ISI.
+        spike_times = np.array([2.4, 2.5])
+        trials = np.array([0, 1])
+        # Use a generous refractory of 0.2 s so the cross-trial 100 ms
+        # ISI *would* count under any naive global path — making the
+        # trial-aware exclusion the only way to return 0.
+        n_v = rpvs(
+            spike_times,
+            trials=trials,
+            refractory_period=0.2,
+            relative=False,
+        )
+        assert n_v == 0
+
+    def test_within_trial_pair_still_counted(self):
+        """Two spikes 0.5 ms apart *within the same trial* must still
+        count as a violation under trial-aware counting — the fix
+        excludes cross-trial pairs only."""
+        spike_times = np.array([0.5, 0.5005, 1.5])
+        trials = np.array([0, 0, 0])
+        n_v = rpvs(
+            spike_times,
+            trials=trials,
+            refractory_period=0.001,
+            relative=False,
+        )
+        assert n_v == 1
+
+    def test_trial_aware_per_cluster(self):
+        """Trial-aware counting must also work in the per-cluster
+        branch: pass ``cluster_labels`` and ``trials``; cross-trial
+        ISIs inside one cluster are still excluded."""
+        spike_times = np.array([0.5, 2.4, 2.5, 1.0])
+        trials = np.array([0, 0, 1, 1])
+        cluster_labels = np.array([0, 0, 0, 1])
+        # cluster 0 has spikes (0.5, 2.4) in trial 0 and (2.5,) in
+        # trial 1; trial-aware: trial 0 ISI is 1.9 s (no violation),
+        # trial 1 has only 1 spike (no ISI).  Total violations: 0.
+        n_v = rpvs(
+            spike_times,
+            cluster_labels=cluster_labels,
+            trials=trials,
+            refractory_period=0.2,
+            relative=False,
+        )
+        assert n_v == 0
 
 
 # ---------------------------------------------------------------------------

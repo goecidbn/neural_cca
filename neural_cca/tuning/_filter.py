@@ -92,6 +92,7 @@ def _build_trial_filter(
     spike_times: npt.ArrayLike,
     trials: npt.ArrayLike,
     angles: npt.ArrayLike,
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_window: tuple[float, float] = (0.5, 2.5),
     cluster_labels: npt.ArrayLike | None = None,
     cluster_id: int | None = None,

@@ -273,10 +273,74 @@ class TestBatchSortExperiment:
     def test_missing_data_source_raises(self, tmp_path):
         """Passing a non-existent path errors out cleanly with a
         :class:`FileNotFoundError` — exercises the entry-point guard
-        without requiring a real experiment on disk."""
+        without requiring a real experiment on disk.  ``stim_window``
+        and ``n_angle_steps`` are now required; pass explicit values
+        so we test the file-not-found path rather than the
+        missing-required-arg guard."""
         pytest.importorskip("xarray")
         from neural_cca.sorting.batch import batch_sort_experiment
 
         bogus = tmp_path / "does_not_exist.zarr"
         with pytest.raises(FileNotFoundError, match="Data source not found"):
-            batch_sort_experiment(data_source=bogus)
+            batch_sort_experiment(
+                data_source=bogus,
+                stim_window=(0.5, 2.5),
+                n_angle_steps=12,
+            )
+
+    def test_missing_stim_window_raises(self, tmp_path):
+        """Omitting *stim_window* raises a clear ``ValueError`` rather
+        than silently using a Natal-specific default."""
+        pytest.importorskip("xarray")
+        from neural_cca.sorting.batch import batch_sort_experiment
+
+        bogus = tmp_path / "does_not_exist.zarr"
+        with pytest.raises(ValueError, match="stim_window is required"):
+            batch_sort_experiment(data_source=bogus, n_angle_steps=12)
+
+    def test_missing_angle_mapping_raises(self, tmp_path):
+        """Omitting both *tlabel2angle* and *n_angle_steps* raises a
+        clear ``ValueError``."""
+        pytest.importorskip("xarray")
+        from neural_cca.sorting.batch import batch_sort_experiment
+
+        bogus = tmp_path / "does_not_exist.zarr"
+        with pytest.raises(ValueError, match="tlabel2angle or n_angle_steps"):
+            batch_sort_experiment(
+                data_source=bogus,
+                stim_window=(0.5, 2.5),
+            )
+
+
+# ======================================================================
+# Public-API top-level re-export contract
+# ======================================================================
+
+
+class TestTopLevelReexports:
+    """Regression test for the top-level barrel.
+
+    The names below were already exposed in ``neural_cca.sorting.__all__``
+    but missing from ``neural_cca.__all__`` — making
+    ``from neural_cca import rpvs`` fail even though it works through
+    the subpackage. Make sure the barrel keeps them.
+    """
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "neg_silhouette_score",
+            "spikes_before_stimulus",
+            "est_snr",
+            "calc_weighted_snr",
+            "rpvs",
+        ],
+    )
+    def test_importable_from_top_level(self, name):
+        import neural_cca as nc
+
+        assert hasattr(nc, name), (
+            f"neural_cca.{name} should be importable from the top-level barrel"
+        )
+        assert callable(getattr(nc, name))
+        assert name in nc.__all__, f"{name} should be listed in neural_cca.__all__"

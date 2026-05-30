@@ -24,7 +24,9 @@ def modulation_ratio_per_orientation(
     trials: npt.NDArray[np.int64],
     angles: npt.NDArray[np.float64],
     bin_size: float = 0.05,
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_window: tuple[float, float] = (0.5, 2.5),
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_frequency: float = 2.0,
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
@@ -35,6 +37,12 @@ def modulation_ratio_per_orientation(
 
     Simple cells typically have F1/F0 > 1 at their preferred orientation,
     while complex cells have F1/F0 < 1.
+
+    Notes:
+        The reported ratio is ``mean(F1) / mean(F0)`` per Skottun et al.
+        (1991), **not** ``mean(F1 / F0)`` (the per-trial-ratio average,
+        which is biased by small-F0 trials and not the V1-literature
+        convention).
 
     Args:
         spike_times: Trial-relative spike times (seconds).

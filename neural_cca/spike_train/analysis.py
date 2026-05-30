@@ -244,6 +244,7 @@ def calc_mfr_trial(
     all_clusters: bool = True,
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_window: tuple[float, float] = (0.5, 2.5),
     n_trials: int | None = None,
 ) -> dict[int, float]:
@@ -322,6 +323,7 @@ def minimal_spike_train_analysis(
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
     refractory_period: float = 0.001,
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_window: tuple[float, float] = (0.5, 2.5),
     n_trials: int = 240,
     only_spontaneous: bool = False,

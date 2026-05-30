@@ -208,9 +208,32 @@ def calc_weighted_snr(
     return float(np.dot(snrs[valid], w))
 
 
+def _rpvs_one(spk: npt.NDArray, refractory_period: float) -> int:
+    """Count refractory-period violations in a single monotonic spike train."""
+    diffs = np.diff(np.sort(spk))
+    diffs = diffs[diffs > 0]
+    return int(np.sum(diffs < refractory_period))
+
+
+def _rpvs_with_trials(
+    spk: npt.NDArray,
+    trials: npt.NDArray,
+    refractory_period: float,
+) -> int:
+    """Count refractory-period violations *within each trial*.
+
+    Mirrors the B3 trial-aware pattern in
+    :func:`contamination_rate_hill`: cross-trial ISIs are structurally
+    excluded so trial-relative spike times never sort into spurious
+    sub-millisecond pairs across trial boundaries.
+    """
+    return sum(_rpvs_one(spk[trials == t], refractory_period) for t in np.unique(trials))
+
+
 def rpvs(
     spike_times: npt.NDArray,
     cluster_labels: npt.NDArray | None = None,
+    trials: npt.NDArray | None = None,
     refractory_period: float = 0.001,
     relative: bool = True,
     all_clusters: bool = True,
@@ -222,6 +245,16 @@ def rpvs(
     summed across clusters (inter-cluster ISIs are not counted).
     Negative ISIs (trial-boundary artefacts) are excluded from the
     violation *count*.
+
+    **Trial-aware counting.**  Pass ``trials`` to compute violations
+    **within each trial**, mirroring the B3 pattern already used in
+    :func:`contamination_rate_hill`.  When ``trials`` is ``None`` the
+    function retains the legacy behaviour (global ``np.diff`` after a
+    sort) and emits a :class:`RuntimeWarning` because trial-relative
+    spike times — the package-wide convention — can produce spurious
+    sub-millisecond cross-trial ISIs when stim windows overlap trial
+    boundaries.  Continuous recordings whose spike times are in
+    absolute monotonic time can safely ignore the warning.
 
     **Units.** *spike_times* and *refractory_period* must use the same
     time unit; the package convention everywhere is **seconds** (the
@@ -250,6 +283,11 @@ def rpvs(
         spike_times: Spike times (seconds).
         cluster_labels: Cluster label per spike (optional for
             ``all_clusters=True`` without per-cluster splitting).
+        trials: Optional ``(n_spikes,)`` trial index per spike.  When
+            given, RPV counting iterates within each trial so that
+            cross-trial pairs are structurally excluded.  When
+            ``None``, the legacy global ``np.diff(np.sort(...))``
+            path is used and a :class:`RuntimeWarning` is emitted.
         refractory_period: Refractory period in seconds.
         relative: Return ratio of violations to total spikes (``True``)
             or absolute count (``False``).
@@ -277,6 +315,16 @@ def rpvs(
             "and reports zero RPVs regardless of the data."
         )
 
+    if trials is None:
+        warnings.warn(
+            "trials=None; cross-trial ISIs may inflate RPV count when stim "
+            "windows overlap trial boundaries.  Pass trials= for trial-aware "
+            "counting (the package-wide trial-relative convention) or ignore "
+            "this warning for continuous monotonic-time recordings.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
     # The denominator is the *spike count*, not the valid-ISI count.
     # Dividing by ``len(diffs)`` would inflate the value for trial-based
     # data with many trials and sparse clusters (each trial transition
@@ -286,25 +334,30 @@ def rpvs(
     # the conventional Phy / Kilosort / SpikeInterface RPV rate and
     # stays stable across cluster sizes and trial structure.
     if all_clusters and cluster_labels is None:
-        diffs = np.diff(spike_times)
-        diffs = diffs[diffs > 0]
-        rpvs_count = int(np.sum(diffs < refractory_period))
+        if trials is None:
+            rpvs_count = _rpvs_one(spike_times, refractory_period)
+        else:
+            rpvs_count = _rpvs_with_trials(spike_times, trials, refractory_period)
         total = len(spike_times)
 
     elif all_clusters and cluster_labels is not None:
         rpvs_count = 0
         total = len(spike_times)
         for cid in np.unique(cluster_labels):
-            spk = spike_times[cluster_labels == cid]
-            diffs = np.diff(spk)
-            diffs = diffs[diffs > 0]
-            rpvs_count += int(np.sum(diffs < refractory_period))
+            mask = cluster_labels == cid
+            spk = spike_times[mask]
+            if trials is None:
+                rpvs_count += _rpvs_one(spk, refractory_period)
+            else:
+                rpvs_count += _rpvs_with_trials(spk, trials[mask], refractory_period)
 
     else:
-        spk = spike_times[cluster_labels == cluster_id]
-        diffs = np.diff(spk)
-        diffs = diffs[diffs > 0]
-        rpvs_count = int(np.sum(diffs < refractory_period))
+        mask = cluster_labels == cluster_id
+        spk = spike_times[mask]
+        if trials is None:
+            rpvs_count = _rpvs_one(spk, refractory_period)
+        else:
+            rpvs_count = _rpvs_with_trials(spk, trials[mask], refractory_period)
         total = len(spk)
 
     if relative:
@@ -1255,6 +1308,13 @@ def fraction_missing(
        but is not exhaustive — inspect the amplitude histogram
        directly before trusting any of these estimates for a low-SNR
        cluster.
+
+    Notes:
+        The ``method="empirical"`` estimator has a structural floor of
+        ``0.5/n`` from the Gaussian kernel placed at ``amp_min``. With
+        small ``n`` (<50 spikes/cluster), prefer ``method="gaussian"``
+        or ``"lognormal"`` if the corresponding KS test does not
+        reject the distributional assumption.
 
     Args:
         waveforms: Waveform matrix ``(n_spikes, snippet_length)``.

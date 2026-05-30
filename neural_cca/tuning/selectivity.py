@@ -52,6 +52,8 @@ References:
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import numpy.typing as npt
 
@@ -177,7 +179,26 @@ def dosi_circular_normalised(
     if return_unnormalised:
         return vec
 
-    value = float(np.abs(vec) / np.sum(activities))
+    # Explicit silent-unit guard: when *every* activity is zero the
+    # denominator is zero and the index is mathematically undefined.
+    # Emit a clear ``RuntimeWarning`` and return ``NaN`` instead of
+    # letting NumPy issue a bare "divide by zero" warning that gives
+    # the caller no idea which unit was responsible.
+    denom = float(np.sum(activities))
+    if denom == 0:
+        warnings.warn(
+            "All activities zero; circular DOSI undefined - returning NaN. "
+            "This usually indicates a silent unit (no spikes in any condition).",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        if p_value:
+            test_angles = angles_rad if direction_selectivity else 2.0 * angles_rad
+            pval = _rayleigh_test(test_angles, activities)
+            return {"value": np.nan, "p_value": pval}
+        return np.nan
+
+    value = float(np.abs(vec) / denom)
 
     if p_value:
         test_angles = angles_rad if direction_selectivity else 2.0 * angles_rad

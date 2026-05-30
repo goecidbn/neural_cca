@@ -130,6 +130,7 @@ def temporal_frequency_tuning(
     trials: npt.NDArray[np.int64],
     temporal_freqs: npt.NDArray[np.float64],
     bin_size: float = 0.05,
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_window: tuple[float, float] = (0.5, 2.5),
     response_metric: str = "f1",
     cluster_labels: npt.NDArray[np.int64] | None = None,

@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `sorting/batch.py`: `batch_sort_experiment()` now treats
+  `stim_window`, `tlabel2angle`, `n_angle_steps`, and
+  `stim_frequency` as **explicit** parameters rather than carrying
+  Natal-specific defaults. `stim_window=None` and the combination
+  `tlabel2angle=None` *and* `n_angle_steps=None` now raise
+  `ValueError` with a pointer to the LabView 30-degree convention.
+  `stim_frequency=None` (the new default) disables F1 / F0
+  computation in the per-cluster tuning block. The eight sibling
+  functions that still carry the legacy `(0.5, 2.5)` /
+  `stim_frequency=2.0` defaults gained a one-line
+  `# NOTE: Natal-specific default; v0.2.0 will make this required.`
+  comment so the broader sweep is grep-findable (see the v0.2.0
+  Roadmap section below).
+- `sorting/metrics.py`: `rpvs()` gained a `trials` keyword that
+  mirrors the B3 trial-aware pattern already used in
+  `contamination_rate_hill()`. With `trials=` supplied, refractory
+  violations are counted **within each trial** so cross-trial
+  trial-relative spikes never sort into spurious sub-millisecond
+  pseudo-ISIs. Omitting `trials` still works but now emits a
+  `RuntimeWarning` flagging the possible inflation.
+  `evaluate_sorting()` passes `trials=data.trials` automatically.
+- `tuning/selectivity.py`: `dosi_circular_normalised()` replaces the
+  silent NumPy `divide by zero` on all-zero activities with an
+  explicit `RuntimeWarning` ("All activities zero; circular DOSI
+  undefined - returning NaN.") and returns `np.nan`. The
+  `p_value=True` path returns `{"value": nan, "p_value": ...}` so
+  downstream tables stay schema-stable.
+- `tuning/statistics.py`: `bootstrap_ci_strata()` emits a
+  `RuntimeWarning` when the smallest stratum has fewer than 3
+  observations, citing Mazurek et al. 2014 (≥ 5 repeats per
+  condition) and noting that the BCa acceleration term becomes
+  unstable on very small strata.
+- `tuning/statistics.py:_bca_ci`: tightened the degenerate-jackknife
+  guard from `den == 0.0` to `abs(den) < 1e-300` so subnormal
+  denominators no longer slip through and amplify the acceleration
+  term `a` to extreme values.
+
+### Documentation
+
+- `tuning/modulation.py`: documented that
+  `modulation_ratio_per_orientation()` reports
+  **mean(F1) / mean(F0)**, per Skottun et al. 1991, *not*
+  `mean(F1 / F0)`.
+- `sorting/metrics.py`: added a `Notes` paragraph to
+  `fraction_missing()` calling out the empirical-KDE estimator's
+  structural floor of `0.5 / n` from the Gaussian kernel placed at
+  `amp_min`, with the recommendation to prefer
+  `method="gaussian"` or `"lognormal"` for small clusters
+  (`n < 50`).
+- `tuning/statistics.py`: clarified the Phipson & Smyth (2010) `+1`
+  correction in `orientation_selectivity_significance()` — the `+1`
+  in both numerator and denominator simulates *including the
+  observed value in the null distribution*; the observed statistic
+  is NOT inserted into `null_osis` itself.
+
+### Public API
+
+- `neural_cca/__init__.py`: re-exported five names that were
+  already in `neural_cca.sorting.__all__` but missing from the
+  top-level barrel: `neg_silhouette_score`, `spikes_before_stimulus`,
+  `est_snr`, `calc_weighted_snr`, `rpvs`.
+
+### Packaging
+
+- `pyproject.toml`: added `readme = "README.md"`,
+  `Development Status :: 3 - Alpha`, `Topic :: Scientific/Engineering`
+  classifiers, and a `Changelog` URL in `[project.urls]`.
+
+### CI
+
+- All three workflows (`tests.yml`, `lint.yml`, `docs.yml`) gained
+  a `concurrency` block (cancel-in-progress on the same ref) and
+  `setup-python@v5` now uses `cache: 'pip'` with
+  `cache-dependency-path: pyproject.toml`.
+- `lint.yml` pins `ruff==0.15.14` to match the bridge.
+
+### Roadmap (v0.2.0)
+
+- Move directory→Dataset loading out of `sorting/batch.py` and into
+  the bridge (`vision_ice_analysis`); `batch_sort_experiment` to
+  accept only `xr.Dataset` or a zarr path.
+- Sweep remaining Natal-specific defaults
+  (`stim_window=(0.5, 2.5)`, `stim_frequency=2.0`) from 8 sibling
+  files: `sorting/containers.py`, `tuning/temporal.py`,
+  `tuning/tuning.py`, `spike_train/analysis.py` (2 sites),
+  `tuning/_filter.py`, `tuning/statistics.py`, `tuning/modulation.py`,
+  `sorting/io_util.py`.
+- Add `CITATION.cff` and Zenodo–GitHub integration for software DOI.
+- Author `paper.md` for JOSS submission.
+- Add `Topic :: Scientific/Engineering :: Bio-Informatics` once
+  spike-sorting/electrophysiology scope is firm.
+
 ## [0.1.3] - 2026-05-26
 
 ### Added

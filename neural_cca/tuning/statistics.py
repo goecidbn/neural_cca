@@ -6,6 +6,7 @@ for tuning analysis metrics.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 
 import numpy as np
@@ -114,7 +115,13 @@ def _bca_ci(
     diffs = jk_mean - jk_valid
     num = float(np.sum(diffs**3))
     den = 6.0 * (float(np.sum(diffs**2))) ** 1.5
-    if den == 0.0:
+    # Tighten the degeneracy guard: an exact ``den == 0.0`` check lets
+    # subnormal denominators slip through and amplify ``a`` to extreme
+    # values that drive the downstream ``alpha_lo``/``alpha_hi``
+    # computation off-rails.  Comparing against the float64 underflow
+    # floor (~1e-300) catches the same "all jackknife diffs zero" case
+    # without permitting a near-zero-but-not-exactly-zero blow-up.
+    if abs(den) < 1e-300:
         return float("nan"), float("nan")
     a = num / den
 
@@ -240,6 +247,14 @@ def orientation_selectivity_significance(
     # Phipson & Smyth (2010) ``+1`` correction: avoids the
     # ``p_perm = 0`` artefact for strongly-tuned cells.  The smallest
     # value is now 1 / (n_permutations + 1).
+    #
+    # The ``+1`` in both numerator and denominator simulates *including
+    # the observed value in the null distribution*, which is the
+    # textbook discrete-uniform formulation.  Note that the observed
+    # statistic itself is NOT inserted into ``null_osis``; it is only
+    # accounted for via the correction term.  Treating the null as
+    # ``[null_osis, observed_osi]`` and dividing by ``1 + n_permutations``
+    # gives the same value without the extra array allocation.
     n_ge = int(np.sum(null_osis >= observed_osi))
     p_perm = (1 + n_ge) / (1 + n_permutations)
 
@@ -262,6 +277,7 @@ def anova_across_orientations(
     spike_times: npt.NDArray[np.float64],
     trials: npt.NDArray[np.int64],
     angles: npt.NDArray[np.float64],
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_window: tuple[float, float] = (0.5, 2.5),
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
@@ -547,6 +563,22 @@ def bootstrap_ci_strata(
     # rebuilding `np.where(strata == s)` on every bootstrap iteration.
     unique_strata = np.unique(strata)
     stratum_indices = [np.where(strata == s)[0] for s in unique_strata]
+
+    # Small-stratum warning.  When the smallest stratum has fewer than
+    # 3 observations, the BCa acceleration term (jackknife-derived) is
+    # noisy and can return degenerate end-points that fall back to the
+    # plain percentile CI.  Mazurek et al. (2014) recommend >= 5
+    # repeats per condition for OS/DS bootstrapping; flag anything
+    # below 3 explicitly so the caller knows the CI may be unstable.
+    min_stratum_size = min(len(idx) for idx in stratum_indices)
+    if min_stratum_size < 3:
+        warnings.warn(
+            f"Stratified bootstrap with smallest stratum size {min_stratum_size} < 3; "
+            "BCa acceleration term may be unstable. Consider >=5 repeats per condition "
+            "(Mazurek et al. 2014).",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     estimate = float(stat_func(data, strata))
 

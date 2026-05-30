@@ -14,7 +14,6 @@ from pathlib import Path
 
 import numpy as np
 
-from .._utils import steps2degree
 from .containers import SortingData
 from .sorting import (
     _as_seed,
@@ -32,9 +31,9 @@ def batch_sort_experiment(
     n_clusters: int | None = None,
     k_range: Sequence[int] = range(2, 6),
     tlabel2angle: dict[int, float] | None = None,
-    n_angle_steps: int = 12,
-    stim_window: tuple[float, float] = (0.5, 2.5),
-    stim_frequency: float | None = 2.0,
+    n_angle_steps: int | None = None,
+    stim_window: tuple[float, float] | None = None,
+    stim_frequency: float | None = None,
     refractory_period: float = 0.001,
     compute_sta: bool = True,
     compute_tuning: bool = True,
@@ -58,6 +57,25 @@ def batch_sort_experiment(
     - Metadata attributes: experiment info, per-electrode sorting
       quality, and per-cluster STA metrics.
 
+    .. important::
+
+        Three formerly-defaulted arguments are now **required** and
+        raise :class:`ValueError` when omitted:
+
+        - ``stim_window`` — there is no library default because the
+          ``(onset, end)`` window is recording-specific.  Pass e.g.
+          ``stim_window=(0.5, 2.5)`` for a 500 ms baseline + 2 s
+          stimulus protocol.
+        - ``tlabel2angle`` *or* ``n_angle_steps`` — either an explicit
+          mapping or the equispaced shorthand must be supplied.  Pass
+          ``tlabel2angle={1: 0.0, 2: 30.0, ...}`` or
+          ``n_angle_steps=12`` (the LabView 30-degree convention).
+          See ``vision_ice_analysis.steps2degree`` for the helper.
+
+        ``stim_frequency=None`` (the new default) is permitted and
+        disables F1 / F0 modulation in the per-cluster tuning block;
+        pass a number to enable it.
+
     Args:
         data_source: Path to either a VisionICeIO experiment directory
             (with .swa/.spi/.stm/.ana files) or a zarr store
@@ -72,12 +90,16 @@ def batch_sort_experiment(
             auto-select via silhouette from *k_range*.
         k_range: Candidate k values for auto-selection.
         tlabel2angle: Mapping from 1-based stimulus label to angle.
-            Defaults to ``steps2degree(n_angle_steps)``.
+            **Required** unless *n_angle_steps* is given; see the
+            "Important" note above.
         n_angle_steps: Number of equidistant angle steps (used when
-            *tlabel2angle* is ``None``).
+            *tlabel2angle* is ``None``).  **Required** unless
+            *tlabel2angle* is given.
         stim_window: ``(onset, end)`` of the stimulus period within
-            each trial (seconds).
+            each trial (seconds).  **Required.**
         stim_frequency: Temporal frequency of the stimulus (Hz).
+            ``None`` (default) disables F1/F0 computation in the
+            per-cluster tuning block.
         refractory_period: Refractory period for RPV computation (s).
         compute_sta: Whether to compute spike-train statistics per
             cluster.
@@ -102,7 +124,28 @@ def batch_sort_experiment(
     Raises:
         ImportError: If zarr, xarray, or visioniceio are not available.
         FileNotFoundError: If *data_source* does not exist.
+        ValueError: If *stim_window* is ``None``, or if both
+            *tlabel2angle* and *n_angle_steps* are ``None``.
     """
+    if stim_window is None:
+        raise ValueError(
+            "stim_window is required. Pass e.g. stim_window=(0.5, 2.5) "
+            "for a 500ms baseline + 2s stimulus protocol. There is no "
+            "library default because stim windows are recording-specific."
+        )
+    if tlabel2angle is None and n_angle_steps is None:
+        raise ValueError(
+            "Either tlabel2angle or n_angle_steps is required. "
+            "Pass tlabel2angle={1: 0.0, 2: 30.0, ...} or n_angle_steps=12 "
+            "(LabView 30-degree convention). See "
+            "vision_ice_analysis.steps2degree for the helper."
+        )
+    # If only n_angle_steps is supplied, build tlabel2angle from it:
+    if tlabel2angle is None:
+        from .._utils import steps2degree
+
+        tlabel2angle = steps2degree(n_angle_steps)
+
     import xarray as xr
 
     data_source = Path(data_source)
@@ -112,9 +155,6 @@ def batch_sort_experiment(
     if output_path is None:
         output_path = data_source.parent / (data_source.stem + "_sorted.zarr")
     output_path = Path(output_path)
-
-    if tlabel2angle is None:
-        tlabel2angle = steps2degree(n_angle_steps)
 
     # ------------------------------------------------------------------
     # 1. Load experiment

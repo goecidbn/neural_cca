@@ -6,6 +6,8 @@ Run with:
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -283,6 +285,42 @@ class TestBootstrapCIStrata:
                 np.arange(10, dtype=float),
                 np.arange(8),
                 lambda d, s: 0.0,
+            )
+
+    def test_small_stratum_warns(self):
+        """Smallest stratum < 3 should emit the BCa-instability
+        warning per the Mazurek et al. 2014 ≥5-repeats guidance.
+
+        Constructed so one stratum has only 2 observations; the
+        bootstrap still runs and returns a result dict.
+        """
+        # Stratum sizes: {10: 5, 20: 2, 30: 5} — smallest is 2.
+        data = np.array([1.0, 1.1, 1.2, 1.3, 1.4, 2.0, 2.1, 3.0, 3.1, 3.2, 3.3, 3.4])
+        strata = np.array([10, 10, 10, 10, 10, 20, 20, 30, 30, 30, 30, 30])
+        with pytest.warns(RuntimeWarning, match="smallest stratum size 2"):
+            result = bootstrap_ci_strata(
+                data,
+                strata,
+                lambda d, s: float(np.mean(d)),
+                n_bootstrap=50,
+                rng=0,
+            )
+        # Sanity: bootstrap still returned a result.
+        assert "estimate" in result
+
+    def test_adequate_stratum_no_warn(self):
+        """No warning when every stratum has >=3 observations."""
+        data = np.tile(np.array([1.0, 1.1, 1.2]), 4)
+        strata = np.repeat([10, 20, 30, 40], 3)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            # Will raise if a RuntimeWarning fires; we expect none.
+            bootstrap_ci_strata(
+                data,
+                strata,
+                lambda d, s: float(np.mean(d)),
+                n_bootstrap=20,
+                rng=0,
             )
 
 

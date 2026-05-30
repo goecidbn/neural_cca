@@ -85,6 +85,28 @@ class TestOSI:
         osi_arr = dosi_circular_normalised(activities, angles)
         assert osi_int == pytest.approx(osi_arr, abs=1e-10)
 
+    def test_silent_unit_warns_and_returns_nan(self):
+        """All-zero activities (silent unit) used to surface as a bare
+        ``RuntimeWarning: divide by zero`` from NumPy with no
+        explanation; now it emits an explicit warning naming the
+        condition and returns ``np.nan`` instead of ``inf``."""
+        activities = np.zeros(12)
+        with pytest.warns(RuntimeWarning, match="All activities zero"):
+            result = dosi_circular_normalised(activities, 12)
+        assert np.isnan(result)
+
+    def test_silent_unit_p_value_path(self):
+        """The ``p_value=True`` path must also warn and return ``nan``
+        in the ``"value"`` entry; the descriptive Rayleigh number is
+        still reported alongside it."""
+        activities = np.zeros(12)
+        with pytest.warns(RuntimeWarning, match="All activities zero"):
+            result = dosi_circular_normalised(activities, 12, p_value=True)
+        assert np.isnan(result["value"])
+        # Rayleigh on zero weights collapses to p=1 (no concentration);
+        # the exact number is a sibling concern — just check it exists.
+        assert "p_value" in result
+
 
 class TestCircularVariance:
     """Tests for circular variance."""

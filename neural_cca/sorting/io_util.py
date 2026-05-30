@@ -161,7 +161,9 @@ def load_from_arrays(
     *,
     waveform_fs: float = 32_000.0,
     n_trials: int | None = None,
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_window: tuple[float, float] = (0.5, 2.5),
+    # NOTE: Natal-specific default; v0.2.0 will make this required.
     stim_frequency: float | None = 2.0,
     metadata: dict | None = None,
 ) -> SortingData:

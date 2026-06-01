@@ -277,8 +277,7 @@ def anova_across_orientations(
     spike_times: npt.NDArray[np.float64],
     trials: npt.NDArray[np.int64],
     angles: npt.NDArray[np.float64],
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_window: tuple[float, float] = (0.5, 2.5),
+    stim_window: tuple[float, float] | None = None,
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
     *,
@@ -294,8 +293,9 @@ def anova_across_orientations(
         trials: Trial index per spike.
         angles: Stimulus angle per trial (degrees).
         stim_window: ``(onset, end)`` of the stimulus period within
-            each trial (seconds). Spikes inside this window contribute
-            to the per-trial firing rate.
+            each trial (seconds; **required**, no portable default).
+            Spikes inside the half-open interval ``[onset, end)``
+            contribute to the per-trial firing rate.
         cluster_labels: Cluster label per spike (optional).
         cluster_id: Cluster ID for per-cluster analysis.
         _filter: **Private** — pre-built per-trial filter from

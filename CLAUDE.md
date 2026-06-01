@@ -67,11 +67,17 @@ neural_cca/
    `tests/test_rng_policy.py` enforces this and bans `default_rng` /
    `RandomState` / legacy `np.random` / plain `PCG64` in package code.
 
-5. **`stim_window = (onset, end)`.**  The trial spans
-   `[0, stim_window[1]]`; `onset` separates spontaneous from
-   stimulated activity.  `SortingData.__post_init__` raises if
-   `end <= onset` — a typo here used to silently NaN out firing
-   rates downstream.
+5. **`stim_window = (onset, end)` — required, half-open-left
+   (v0.4.0).**  There is **no portable default**: `stim_window` is a
+   required argument everywhere (omitting it raises `ValueError`; pass
+   `(0.5, 2.5)` for the legacy Natal window).  The stimulated interval
+   is `[onset, end)` — a spike at exactly `onset` is stimulated, one at
+   exactly `end` is not — abutting the baseline `[0, onset)` with no
+   gap.  The trial spans `[0, end]`.  `SortingData.__post_init__` raises
+   if `end <= onset`, if `stim_window is None`, or if any trial ID is
+   outside `[0, n_trials)`.  `stim_frequency` likewise defaults to
+   `None` (disables F0/F1/F2), except `modulation_ratio_per_orientation`
+   which requires it.
 
 ## v0.1.3–v0.2.0 changes a fresh agent **will not infer** from skimming
 

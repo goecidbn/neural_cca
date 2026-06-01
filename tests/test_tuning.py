@@ -408,9 +408,10 @@ class TestGetOsMetrics:
     def test_verbose_levels(self):
         """return_verbose=2 should include intermediate arrays."""
         st, tr, angles, _ = _make_tuned_spikes()
-        m0 = get_os_metrics(st, tr, angles, return_verbose=0)
-        m1 = get_os_metrics(st, tr, angles, return_verbose=1)
-        m2 = get_os_metrics(st, tr, angles, return_verbose=2)
+        kw = dict(stim_window=(0.5, 2.5), stim_frequency=2.0)
+        m0 = get_os_metrics(st, tr, angles, **kw, return_verbose=0)
+        m1 = get_os_metrics(st, tr, angles, **kw, return_verbose=1)
+        m2 = get_os_metrics(st, tr, angles, **kw, return_verbose=2)
 
         assert "f0_mean" not in m0
         assert "f0_mean" in m1
@@ -461,7 +462,9 @@ class TestGetOsMetricsExtended:
     def test_compute_gosi(self):
         """compute_gosi=True adds gosi and gdsi keys."""
         st, tr, angles, _ = _make_tuned_spikes(preferred_angle=90.0, sigma_deg=25.0)
-        m = get_os_metrics(st, tr, angles, compute_gosi=True, return_verbose=0)
+        m = get_os_metrics(
+            st, tr, angles, stim_window=(0.5, 2.5), compute_gosi=True, return_verbose=0
+        )
         assert "gosi" in m
         assert "gdsi" in m
         assert m["gosi"] > 0.1  # tuned neuron
@@ -473,6 +476,7 @@ class TestGetOsMetricsExtended:
             st,
             tr,
             angles,
+            stim_window=(0.5, 2.5),
             compute_p_values=True,
             compute_gosi=True,
             return_verbose=0,
@@ -489,6 +493,7 @@ class TestGetOsMetricsExtended:
             st,
             tr,
             angles,
+            stim_window=(0.5, 2.5),
             fit_model="von_mises_orientation",
             return_verbose=0,
         )
@@ -503,6 +508,7 @@ class TestGetOsMetricsExtended:
             st,
             tr,
             angles,
+            stim_window=(0.5, 2.5),
             bootstrap_ci=True,
             n_bootstrap=50,
             compute_gosi=True,
@@ -559,6 +565,7 @@ class TestTrialFilterReuse:
                 st,
                 tr,
                 angles,
+                stim_window=(0.5, 2.5),
                 compute_p_values=True,
                 compute_gosi=True,
                 bootstrap_ci=True,

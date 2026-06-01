@@ -1,7 +1,8 @@
 """Array loader and zarr export for the spike-sorting pipeline.
 
-For VisionICeIO data use ``vision_ice_analysis.load_from_visioniceio``
-(in the separate ``vision-ice-analysis`` bridge package).
+This module is recording-system agnostic: build :class:`SortingData`
+from raw numpy arrays via :func:`load_from_arrays`, or read a
+previously exported store back via :func:`read_zarr_sorting`.
 
 The :class:`SortingData` and :class:`SortingResult` value objects live
 in :mod:`sorting.containers`; this module re-exports them so the
@@ -161,16 +162,14 @@ def load_from_arrays(
     *,
     waveform_fs: float = 32_000.0,
     n_trials: int | None = None,
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_window: tuple[float, float] = (0.5, 2.5),
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_frequency: float | None = 2.0,
+    stim_window: tuple[float, float] | None = None,
+    stim_frequency: float | None = None,
     metadata: dict | None = None,
 ) -> SortingData:
     """Build a ``SortingData`` container from raw numpy arrays.
 
     Use this when you already extracted waveforms and spike times
-    from your recording system (without VisionICeIO).
+    from your recording system.
 
     Args:
         waveforms: (n_spikes, snippet_length) float array.
@@ -180,15 +179,16 @@ def load_from_arrays(
         waveform_fs: Waveform sampling rate (Hz).
         n_trials: Total number of trials.  Defaults to ``len(angles)``.
         stim_window: ``(onset, end)`` of the stimulus period within
-            each trial (seconds).
-        stim_frequency: Temporal frequency of the stimulus (Hz).
+            each trial (seconds).  **Required** (no portable default).
+        stim_frequency: Temporal frequency of the stimulus (Hz), or
+            ``None`` (default) to disable F0/F1/F2 harmonic analysis.
         metadata: Arbitrary dict of extra information.
 
     Returns:
         ``SortingData`` container.
 
     Raises:
-        ValueError: If waveforms is not 2-D.
+        ValueError: If waveforms is not 2-D, or if stim_window is None.
     """
     waveforms = np.asarray(waveforms, dtype=np.float64)
     if waveforms.ndim != 2:

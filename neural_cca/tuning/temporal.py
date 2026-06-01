@@ -130,8 +130,7 @@ def temporal_frequency_tuning(
     trials: npt.NDArray[np.int64],
     temporal_freqs: npt.NDArray[np.float64],
     bin_size: float = 0.05,
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_window: tuple[float, float] = (0.5, 2.5),
+    stim_window: tuple[float, float] | None = None,
     response_metric: str = "f1",
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
@@ -147,8 +146,9 @@ def temporal_frequency_tuning(
         temporal_freqs: TF value per trial (Hz).
         bin_size: PSTH bin width (seconds).
         stim_window: ``(onset, end)`` of the stimulus period within
-            each trial (seconds). Only spikes inside this window are
-            counted; the per-trial PSTH is built on the same window.
+            each trial (seconds; **required**, no portable default).
+            Only spikes inside the half-open interval ``[onset, end)``
+            are counted; the per-trial PSTH is built on the same window.
         response_metric: ``"f1"`` for F1 amplitude, ``"mfr"`` for mean
             firing rate.
         cluster_labels: Cluster label per spike (optional).
@@ -194,6 +194,9 @@ def temporal_frequency_tuning(
         Visual Neuroscience 13, 477–492.
         doi:10.1017/S0952523800008154.
     """
+    if stim_window is None:
+        raise ValueError("stim_window=(onset, end) (trial-relative seconds) is required.")
+
     spike_times = np.asarray(spike_times, dtype=np.float64)
     trials = np.asarray(trials, dtype=np.int64)
     temporal_freqs = np.asarray(temporal_freqs, dtype=np.float64)
@@ -216,7 +219,7 @@ def temporal_frequency_tuning(
         for t in tf_trials:
             t_mask = trials == t
             spk = spike_times[t_mask]
-            tf_spikes.append(spk[(spk > s_on) & (spk <= s_end)])
+            tf_spikes.append(spk[(spk >= s_on) & (spk < s_end)])
 
         if response_metric == "mfr":
             total = sum(len(s) for s in tf_spikes)

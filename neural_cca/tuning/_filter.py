@@ -92,8 +92,7 @@ def _build_trial_filter(
     spike_times: npt.ArrayLike,
     trials: npt.ArrayLike,
     angles: npt.ArrayLike,
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_window: tuple[float, float] = (0.5, 2.5),
+    stim_window: tuple[float, float] | None = None,
     cluster_labels: npt.ArrayLike | None = None,
     cluster_id: int | None = None,
 ) -> _TrialFilteredSpikes:
@@ -111,7 +110,8 @@ def _build_trial_filter(
         angles: ``(n_trials,)`` stimulus angle in degrees per trial.
             ``len(angles)`` defines the trial count.
         stim_window: ``(onset, offset)`` half-open stimulus interval
-            in seconds.  Spikes with ``onset < t <= offset`` are kept.
+            in seconds (**required**, no portable default).  Spikes
+            with ``onset <= t < offset`` are kept.
         cluster_labels: Optional ``(n_spikes,)`` cluster label per
             spike.  Must be provided together with *cluster_id*.
         cluster_id: Optional cluster ID to restrict the filter to.
@@ -130,6 +130,8 @@ def _build_trial_filter(
         raise ValueError(
             "cluster_labels and cluster_id must both be provided together, or both omitted."
         )
+    if stim_window is None:
+        raise ValueError("stim_window=(onset, end) (trial-relative seconds) is required.")
 
     spike_times = np.asarray(spike_times, dtype=np.float64)
     trials = np.asarray(trials, dtype=np.int64)
@@ -168,7 +170,7 @@ def _build_trial_filter(
     # Apply stimulus-window filter once, then bucket by trial in a
     # single pass.  This is the only place in the package that walks
     # the raw spike arrays for orientation analyses.
-    in_window = (spike_times > s_on) & (spike_times <= s_off)
+    in_window = (spike_times >= s_on) & (spike_times < s_off)
     windowed_st = spike_times[in_window]
     windowed_tr = trials[in_window]
 

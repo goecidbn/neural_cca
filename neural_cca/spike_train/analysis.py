@@ -244,8 +244,7 @@ def calc_mfr_trial(
     all_clusters: bool = True,
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_window: tuple[float, float] = (0.5, 2.5),
+    stim_window: tuple[float, float] | None = None,
     n_trials: int | None = None,
 ) -> dict[int, float]:
     """Mean firing rate per trial (during stimulus period).
@@ -260,8 +259,9 @@ def calc_mfr_trial(
         cluster_id: Cluster to select (required when
             ``all_clusters=False``).
         stim_window: ``(onset, end)`` of the stimulus period within
-            each trial (seconds). The mean firing rate is computed
-            from spikes that fall in ``(onset, end]`` and divided by
+            each trial (seconds).  **Required** (no portable default).
+            The mean firing rate is computed from spikes that fall in
+            the half-open interval ``[onset, end)`` and divided by
             ``end - onset``.
         n_trials: Number of trials.  When given, the result covers
             trial IDs ``0..n_trials-1`` (silent trials get rate 0).
@@ -283,6 +283,8 @@ def calc_mfr_trial(
     """
     if not all_clusters and (cluster_labels is None or cluster_id is None):
         raise ValueError("cluster_labels and cluster_id required when all_clusters is False.")
+    if stim_window is None:
+        raise ValueError("stim_window=(onset, end) (trial-relative seconds) is required.")
 
     s_on, s_end = stim_window
     stim_duration = s_end - s_on
@@ -301,10 +303,10 @@ def calc_mfr_trial(
         sts = spike_times[trial_mask]
 
         if all_clusters:
-            n_spikes = np.sum((sts > s_on) & (sts <= s_end))
+            n_spikes = np.sum((sts >= s_on) & (sts < s_end))
         else:
             n_spikes = np.sum(
-                (sts > s_on) & (sts <= s_end) & (cluster_labels[trial_mask] == cluster_id)
+                (sts >= s_on) & (sts < s_end) & (cluster_labels[trial_mask] == cluster_id)
             )
 
         mfr_by_trial[int(trial_idx)] = float(n_spikes) / stim_duration
@@ -323,8 +325,7 @@ def minimal_spike_train_analysis(
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
     refractory_period: float = 0.001,
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_window: tuple[float, float] = (0.5, 2.5),
+    stim_window: tuple[float, float] | None = None,
     n_trials: int = 240,
     only_spontaneous: bool = False,
     only_stimulated: bool = False,
@@ -352,17 +353,18 @@ def minimal_spike_train_analysis(
         refractory_period: Refractory period for LvR computation
             (seconds).
         stim_window: ``(onset, end)`` of the stimulus period within
-            a trial (seconds). The trial is assumed to span
-            ``[0, end]``: ``onset`` separates the spontaneous and
-            stimulated portions, and ``end`` is the full trial length
-            used for total-recording-duration calculations.
+            a trial (seconds).  **Required** (no portable default).
+            The trial is assumed to span ``[0, end]``: ``onset``
+            separates the spontaneous and stimulated portions, and
+            ``end`` is the full trial length used for
+            total-recording-duration calculations.
         n_trials: Number of experimental trials (used to convert spike
             count to MFR; ignored when *trials* is given because the
             unique trial count is then derived from the data).
         only_spontaneous: Analyse only pre-stimulus spikes
             (``[0, onset)``).
-        only_stimulated: Analyse only post-onset spikes
-            (``[onset, end]``).
+        only_stimulated: Analyse only stimulated-window spikes
+            (``[onset, end)``).
 
     Returns:
         Dictionary with keys ``"mfr"`` (Hz), ``"cv"`` (dimensionless),
@@ -380,6 +382,8 @@ def minimal_spike_train_analysis(
         raise ValueError(
             "Both cluster_labels and cluster_id must be provided together, or both omitted."
         )
+    if stim_window is None:
+        raise ValueError("stim_window=(onset, end) (trial-relative seconds) is required.")
 
     s_on, s_end = stim_window
 
@@ -395,7 +399,7 @@ def minimal_spike_train_analysis(
         win_mask = spike_times < s_on
         per_trial_win = s_on
     elif only_stimulated:
-        win_mask = spike_times >= s_on
+        win_mask = (spike_times >= s_on) & (spike_times < s_end)
         per_trial_win = s_end - s_on
     else:
         win_mask = np.ones(len(spike_times), dtype=bool)

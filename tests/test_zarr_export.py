@@ -317,6 +317,7 @@ class TestEdgeCases:
             spike_times=rng.uniform(0, 2.5, n),
             trials=rng.integers(0, 12, n).astype(np.int64),
             angles=np.linspace(0, 330, 12),
+            stim_window=(0.5, 2.5),
         )
         result = SortingResult(
             cluster_labels=np.zeros(n, dtype=np.int64),

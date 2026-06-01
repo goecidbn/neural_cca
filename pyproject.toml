@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "neural-cca"
-version = "0.3.0"
+version = "0.4.0"
 description = "Spike sorting, spike train statistics, and orientation selectivity analysis for extracellular recordings"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,13 +35,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-batch = ["xarray>=2022.6", "zarr>=2.12"]
+batch = ["xarray>=2022.6", "zarr>=2.16"]
 test = ["pytest>=7.0", "pytest-cov"]
 docs = ["sphinx>=6.0", "pydata-sphinx-theme>=0.14", "sphinx-design", "numpydoc", "myst-parser", "tomli>=1.1; python_version < '3.11'"]
 dev = ["ruff>=0.4"]
 all = [
     "xarray>=2022.6",
-    "zarr>=2.12",
+    "zarr>=2.16",
     "pytest>=7.0",
     "pytest-cov",
     "sphinx>=6.0",

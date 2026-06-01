@@ -277,10 +277,8 @@ def get_os_metrics(
     all_clusters: bool = True,
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_window: tuple[float, float] = (0.5, 2.5),
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_frequency: float | None = 2.0,
+    stim_window: tuple[float, float] | None = None,
+    stim_frequency: float | None = None,
     return_verbose: int = 1,
     fit_model: str | None = None,
     compute_gosi: bool = True,
@@ -304,9 +302,9 @@ def get_os_metrics(
         cluster_id: Cluster ID to select (required when
             ``all_clusters=False``).
         stim_window: ``(onset, end)`` of the stimulus period within
-            each trial (seconds). Spikes inside this half-open
-            interval ``(onset, end]`` are counted; the per-trial PSTH
-            is built on the same window.
+            each trial (seconds; **required**, no portable default).
+            Spikes inside the half-open interval ``[onset, end)`` are
+            counted; the per-trial PSTH is built on the same window.
         stim_frequency: Temporal frequency of the stimulus (Hz).
             Set to ``None`` to skip F0/F1/F2 computation.
         return_verbose: 0 = core metrics only; 1 = core + F0/F1/F2
@@ -337,6 +335,8 @@ def get_os_metrics(
         raise ValueError("cluster_id must be specified when all_clusters is False.")
     if not all_clusters and cluster_labels is None:
         raise ValueError("cluster_labels must be provided when all_clusters is False.")
+    if stim_window is None:
+        raise ValueError("stim_window=(onset, end) (trial-relative seconds) is required.")
 
     s_on, s_end = stim_window
 

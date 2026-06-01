@@ -7,6 +7,7 @@ import pytest
 
 from neural_cca.spike_train.analysis import (
     autocorrelogram,
+    calc_mfr_trial,
     cv_log_isi,
     fano_factor,
     firing_rate_stability,
@@ -45,6 +46,38 @@ def _identical_trials(n_spikes_per_trial=10, duration=2.5, n_trials=20):
         n_spikes_per_trial=n_spikes_per_trial, duration=duration, n_trials=n_trials
     )
     return d["spike_times"], d["trials"]
+
+
+# ---------------------------------------------------------------------------
+# Stimulus-window interval convention (#4, v0.4.0)
+# ---------------------------------------------------------------------------
+
+
+class TestStimWindowIntervalConvention:
+    """The stimulus interval is half-open-left ``[onset, end)``.
+
+    A spike at exactly ``onset`` is part of the stimulated window; a
+    spike at exactly ``end`` is not.  This abuts the baseline
+    ``[0, onset)`` with no overlap and no gap — under the old
+    ``(onset, end]`` a spike at ``t == onset`` fell in neither epoch.
+    """
+
+    def test_calc_mfr_trial_includes_onset_excludes_end(self):
+        on = calc_mfr_trial(np.array([0.5]), np.array([0]), stim_window=(0.5, 2.5), n_trials=1)
+        end = calc_mfr_trial(np.array([2.5]), np.array([0]), stim_window=(0.5, 2.5), n_trials=1)
+        assert on[0] == pytest.approx(0.5)  # 1 spike / 2.0 s — onset counted
+        assert end[0] == pytest.approx(0.0)  # end excluded
+
+    def test_minimal_only_stimulated_excludes_end(self):
+        # 3 spikes: at onset (counted), mid-window (counted), at end
+        # (excluded under [onset, end)).  1 trial, 2.0 s window.
+        res = minimal_spike_train_analysis(
+            np.array([0.5, 1.5, 2.5]),
+            trials=np.array([0, 0, 0]),
+            stim_window=(0.5, 2.5),
+            only_stimulated=True,
+        )
+        assert res["mfr"] == pytest.approx(1.0)  # 2 spikes / 2.0 s
 
 
 # ---------------------------------------------------------------------------

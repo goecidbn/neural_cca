@@ -713,3 +713,20 @@ class TestSortingDataValidation:
         data = SortingData(**self._minimal_arrays(), stim_window=(0.5, 2.5))
         assert data.stim_window == (0.5, 2.5)
         assert data.stimulus_duration == 2.0
+
+    def test_missing_stim_window_raises(self):
+        """#7 (v0.4.0): stim_window has no portable default; omitting it
+        raises instead of silently assuming the legacy (0.5, 2.5) window."""
+        with pytest.raises(ValueError, match="stim_window.*required"):
+            SortingData(**self._minimal_arrays())
+
+    def test_out_of_range_trial_id_raises(self):
+        """#9 (v0.4.0): trial IDs must be 0-based indices in
+        ``[0, n_trials)``.  A conforming producer guarantees this; the
+        guard fails loudly on non-conforming external input instead of
+        silently mis-aligning per-trial angles / rates downstream."""
+        arrays = self._minimal_arrays()
+        # angles has length 1 → n_trials == 1, so trial id 9 is out of range.
+        arrays["trials"] = np.array([0, 0, 0, 0, 9], dtype=np.int64)
+        with pytest.raises(ValueError, match=r"0-based indices in \[0, n_trials\)"):
+            SortingData(**arrays, stim_window=(0.5, 2.5))

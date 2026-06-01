@@ -68,14 +68,17 @@ class SortingData:
         n_trials: Total number of trials (may exceed
             ``len(unique(trials))`` if some trials had no spikes).
         stim_window: ``(onset, end)`` of the stimulus period within
-            each trial (seconds).  Must satisfy ``onset < end`` —
-            ``__post_init__`` raises ``ValueError`` on a zero or
-            inverted window so a typo doesn't silently divide by
-            zero in the downstream firing-rate calculation.  Spikes
-            that fall in ``(onset, end]`` are part of the stimulated
-            portion; ``end`` is also the assumed full trial length.
+            each trial (seconds).  **Required** — there is no portable
+            default, so ``__post_init__`` raises ``ValueError`` when it
+            is ``None``.  Must also satisfy ``onset < end`` (a zero or
+            inverted window raises too, so a typo doesn't silently
+            divide by zero in the downstream firing-rate calculation).
+            Spikes that fall in the half-open interval ``[onset, end)``
+            are part of the stimulated portion; ``end`` is also the
+            assumed full trial length.
         stim_frequency: Temporal frequency of the visual stimulus
-            (Hz).  Set to ``None`` when unknown / not applicable.
+            (Hz).  Defaults to ``None`` (unknown / not applicable),
+            which disables F0/F1/F2 harmonic analysis downstream.
         metadata: Arbitrary extra information (electrode id, animal, …).
     """
 
@@ -85,10 +88,8 @@ class SortingData:
     angles: npt.NDArray[np.float64]
     waveform_fs: float = 32_000.0
     n_trials: int | None = None
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_window: tuple[float, float] = (0.5, 2.5)
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_frequency: float | None = 2.0
+    stim_window: tuple[float, float] | None = None
+    stim_frequency: float | None = None
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -104,6 +105,22 @@ class SortingData:
             )
         if self.n_trials is None:
             self.n_trials = int(len(self.angles))
+        # Trial IDs must be 0-based indices into ``angles`` (the package
+        # convention is that ``angles[k]`` is the stimulus angle of trial
+        # ``k``).  A conforming data producer already guarantees this;
+        # the guard fails loudly on non-conforming external input instead
+        # of silently mis-aligning per-trial rates downstream.
+        if len(self.trials) and (
+            int(self.trials.min()) < 0 or int(self.trials.max()) >= self.n_trials
+        ):
+            raise ValueError(
+                "trials must be 0-based indices in [0, n_trials); got "
+                f"min={int(self.trials.min())}, max={int(self.trials.max())}, "
+                f"n_trials={self.n_trials}."
+            )
+        # stim_window is required — there is no portable default.
+        if self.stim_window is None:
+            raise ValueError("stim_window=(onset, end) (trial-relative seconds) is required.")
         # Normalise to a tuple of two floats — accept lists / arrays as
         # well so deserialised JSON / Zarr attrs round-trip cleanly.
         s_on, s_end = self.stim_window

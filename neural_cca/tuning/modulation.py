@@ -24,10 +24,8 @@ def modulation_ratio_per_orientation(
     trials: npt.NDArray[np.int64],
     angles: npt.NDArray[np.float64],
     bin_size: float = 0.05,
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_window: tuple[float, float] = (0.5, 2.5),
-    # NOTE: Natal-specific default; v0.2.0 will make this required.
-    stim_frequency: float = 2.0,
+    stim_window: tuple[float, float] | None = None,
+    stim_frequency: float | None = None,
     cluster_labels: npt.NDArray[np.int64] | None = None,
     cluster_id: int | None = None,
     *,
@@ -50,8 +48,10 @@ def modulation_ratio_per_orientation(
         angles: Stimulus angle per trial (degrees).
         bin_size: PSTH bin width (seconds).
         stim_window: ``(onset, end)`` of the stimulus period within
-            each trial (seconds). PSTHs are built on this window.
+            each trial (seconds; **required**, no portable default).
+            PSTHs are built on the half-open interval ``[onset, end)``.
         stim_frequency: Temporal frequency of stimulus (Hz).
+            **Required** — the F1/F0 ratio is undefined without it.
         cluster_labels: Cluster label per spike (optional).
         cluster_id: Cluster ID for per-cluster analysis.
         _filter: **Private** — pre-built per-trial filter from
@@ -63,6 +63,11 @@ def modulation_ratio_per_orientation(
     Returns:
         Dict mapping ``{angle_degrees: f1_f0_ratio}``.
     """
+    if stim_frequency is None:
+        raise ValueError(
+            "stim_frequency (Hz) is required: the F1/F0 modulation ratio "
+            "is undefined without the stimulus fundamental frequency."
+        )
     if _filter is None:
         _filter = _build_trial_filter(
             spike_times,

@@ -411,6 +411,7 @@ class TestTrialIndexValidation:
                 spike_times=np.array([0.7, 1.2]),
                 trials=np.array([0, 7]),
                 angles=np.linspace(0, 144, 5),
+                stim_window=(0.5, 2.5),
             )
 
     def test_negative_trial_raises(self):
@@ -421,6 +422,7 @@ class TestTrialIndexValidation:
                 spike_times=np.array([0.7, 1.2]),
                 trials=np.array([-1, 0]),
                 angles=np.linspace(0, 144, 5),
+                stim_window=(0.5, 2.5),
             )
 
     def test_in_range_trials_ok(self):
@@ -431,6 +433,7 @@ class TestTrialIndexValidation:
             spike_times=np.array([0.7, 1.2, 2.1]),
             trials=np.array([0, 1, 4]),
             angles=np.linspace(0, 144, 5),
+            stim_window=(0.5, 2.5),
         )
         assert out.n_trials == 5
         # Trials 2 and 3 have no spikes, so their MFR is 0.

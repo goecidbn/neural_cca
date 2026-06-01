@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-01
+
+### Changed
+
+- **BREAKING — `stim_window` is now required; there is no portable
+  default.** The Natal-specific `(0.5, 2.5)` default was removed from
+  every entry point (`SortingData`, `load_from_arrays`,
+  `calc_mfr_trial`, `minimal_spike_train_analysis`, `get_os_metrics`,
+  `temporal_frequency_tuning`, `modulation_ratio_per_orientation`,
+  `anova_across_orientations`, and the internal `_build_trial_filter`).
+  Omitting `stim_window` now raises `ValueError` instead of silently
+  assuming a 0.5–2.5 s window. Pass `stim_window=(0.5, 2.5)` to
+  reproduce the old behaviour.
+- **BREAKING — `stim_frequency` no longer defaults to the Natal 2.0 Hz.**
+  `SortingData`, `load_from_arrays`, and `get_os_metrics` now default
+  `stim_frequency=None`, which *disables* F0/F1/F2 harmonic analysis
+  (the harmonic keys are filled with `NaN`) rather than silently
+  assuming 2 Hz. `modulation_ratio_per_orientation` requires it (the
+  F1/F0 ratio is undefined without the fundamental) and raises
+  `ValueError` when it is `None`.
+- **BREAKING — the stimulus interval is now half-open-left
+  `[onset, end)` (was `(onset, end]`).** The spike-count gates in
+  `calc_mfr_trial`, `minimal_spike_train_analysis` (`only_stimulated`),
+  `_build_trial_filter`, and `temporal_frequency_tuning` changed from
+  `(t > onset) & (t <= end)` to `(t >= onset) & (t < end)`. The
+  stimulated window now abuts the baseline `[0, onset)` with no overlap
+  and no gap — a spike at exactly `t == onset` previously fell in
+  *neither* epoch. Per-trial boundary counts shift by at most one spike.
+- `pyproject.toml`: `zarr` floor raised `>=2.12` → `>=2.16` to
+  co-version with `VisionICeIO` and the bridge.
+
+### Added
+
+- `SortingData.__post_init__` now validates that trial IDs are 0-based
+  indices in `[0, n_trials)` and raises `ValueError` otherwise. A
+  conforming producer already guarantees this; the guard fails loudly
+  on non-conforming external input instead of silently mis-aligning
+  per-trial angles / rates downstream.
+- Regression tests locking the new contracts: the stim_window-required
+  and out-of-range-trial guards (`tests/test_sorting_preprocess.py`),
+  and the half-open-left `[onset, end)` interval convention
+  (`tests/test_spike_train.py`).
+
+### Removed
+
+- The 13 grep-marked `# NOTE: Natal-specific default; v0.2.0 will make
+  this required.` comments — the sweep they tracked is now complete.
+  `sorting/io_util.py` also no longer names the `vision_ice_analysis` /
+  `VisionICeIO` siblings in its docstrings (a generic analysis leaf
+  should reference neither the bridge nor the I/O layer).
+
 ## [0.3.0] - 2026-05-30
 
 ### Changed
@@ -123,12 +174,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ✅ Done (this release): directory→Dataset loading and
   `batch_sort_experiment` no longer live in `sorting/batch.py` — the
   module moved to the `vision_ice_analysis` bridge (see *Removed*).
-- Sweep remaining Natal-specific defaults
-  (`stim_window=(0.5, 2.5)`, `stim_frequency=2.0`) from 8 sibling
-  files: `sorting/containers.py`, `tuning/temporal.py`,
-  `tuning/tuning.py`, `spike_train/analysis.py` (2 sites),
-  `tuning/_filter.py`, `tuning/statistics.py`, `tuning/modulation.py`,
-  `sorting/io_util.py`.
+- ✅ Done (0.4.0): swept the remaining Natal-specific defaults
+  (`stim_window=(0.5, 2.5)`, `stim_frequency=2.0`) from the sibling
+  files — `stim_window` is now required everywhere and
+  `stim_frequency` defaults to `None` (see the 0.4.0 entry above).
 - Add `CITATION.cff` and Zenodo–GitHub integration for software DOI.
 - Author `paper.md` for JOSS submission.
 - Add `Topic :: Scientific/Engineering :: Bio-Informatics` once

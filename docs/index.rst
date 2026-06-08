@@ -86,8 +86,13 @@ Institutions & Funding
      <a href="https://www.mwk.niedersachsen.de/startseite/" target="_blank">
        <img src="_static/logo_mwk.png" alt="Niedersächsisches Ministerium für Wissenschaft und Kultur" />
      </a>
+     <a href="https://www.daad.de/en/" target="_blank">
+       <img src="_static/logo_daad.png" alt="DAAD — German Academic Exchange Service" />
+     </a>
    </div>
 
 The developer team is part of the `Göttingen Campus Institute for Dynamics of Biological Networks (CIDBN) <https://uni-goettingen.de/en/608362.html>`_.
 This project is partially supported by the
-`Niedersächsisches Ministerium für Wissenschaft und Kultur (MWK) <https://www.mwk.niedersachsen.de/startseite/>`_.
+`Niedersächsisches Ministerium für Wissenschaft und Kultur (MWK) <https://www.mwk.niedersachsen.de/startseite/>`_
+and the `DAAD (Deutscher Akademischer Austauschdienst) <https://www.daad.de/en/>`_
+through a PPP Brazil PROBRAL collaboration with `CAPES <https://www.gov.br/capes/>`_ (Project ID: 57754779).
